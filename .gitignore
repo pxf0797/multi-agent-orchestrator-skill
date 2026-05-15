@@ -1,0 +1,4 @@
+.DS_Store
+*.log
+~/.claude/orchestrator/checkpoints/
+teams_disabled
