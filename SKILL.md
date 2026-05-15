@@ -91,6 +91,22 @@ SOP 使用方式：
 ```
 
 Coordinator 将此 JSON 解析后，逐条调用 TaskCreate + 设置 blockedBy，生成可执行的 DAG。
+
+**DSL 文件编译（P2 完整方案）：**
+
+当用户提供 `.dsl` 文件路径时（如 `/orchestrate @file:auth-system.dsl`），Coordinator 调用 DSL 解析引擎：
+```
+dsl文件 → [解析器] → AST → [编译器] → JSON Plan → TaskCreate序列
+```
+
+解析引擎位于 `scripts/dsl-parser.py`，支持两阶段管道：
+- Stage 1 (解析): `.dsl` 文本 → AST（完整语法：@plan/@task/@parallel/@depends_on/@conditional/@human_approval）
+- Stage 2 (编译): AST → JSON Plan → 自动生成 TaskCreate + blockedBy + hitl_gates
+
+编译时自动检测：循环依赖(E001)、未定义引用(E002)、并行内依赖冲突(E003)、缺@plan声明(E004)、非法角色/模型值(E005)、重复任务名(E006)、空条件表达式(E007)
+
+未提供 `.dsl` 文件时，Coordinator 使用上述 JSON 结构化定义或自由文本拆解。
+
 优势：结构化、可人工审查修改、可保存为模板复用。
 
 ### Step 4: 检查点保存
@@ -189,6 +205,8 @@ while 有未完成任务:
   for 每个 blockedBy 为空的 pending/in_progress 任务:
     ├── 已在运行中? → 跳过（等 Agent 完成通知）
     ├── 就绪且未分配? → 启动 Agent
+    │   → [事件] 发射 task.started 事件到 ~/.claude/orchestrator/events/<orch-id>.jsonl
+    │   → [事件] 启动 Monitor 监听事件文件: tail -f events/<orch-id>.jsonl
     └── 超过并发上限(4)? → 等待
 
   # 阶段3: 完成处理
@@ -196,6 +214,10 @@ while 有未完成任务:
   → 通过 agent_id 关联到对应 Task
   → TaskUpdate(status: completed) → 解锁下游任务
   → 更新检查点文件（含 sub_steps 进度）
+  → [事件] 发射 checkpoint.saved 事件
+  → [事件] 如阶段切换，发射 orchestrator.phase 事件
+  → 心跳检测: 超过90秒无 task.heartbeat 事件 → 标记疑似卡死
+  → 消费事件流: 按 Compact/Detail/Summary 模式格式化展示
   → 输出进度摘要："[orch-<id>] 进度: <已完成>/<总数> — <最近完成的Task名> 完成 ✅"
   → 子步骤进度可见时，追加: "(子步骤: <当前子步骤>/<总子步骤>)"
   → 如果 completed_task 触发了 hitl_gate: 回到阶段1
@@ -239,6 +261,11 @@ HITL Gate 完整配置结构：
   子步骤完成:  "[orch-<id>] 📍 Task #N 子步骤 <step_id>: <描述> (<当前>/<总数>)"
   全部完成:    "[orch-<id>] 🎉 全部完成! 总耗时: <time>, Token: <total>"
 
+心跳机制：
+  每个 Agent 每 30 秒发射一次 task.heartbeat 事件（由进度注入模板自动触发）
+  Coordinator 在每个调度循环周期检查: 距离上次心跳 > 90秒 → 标记 stalled
+  心跳事件格式: {"event":"task.heartbeat","data":{"since_start_sec":158,"current_operation":"..."}}
+
 #### 5.3 Agent 启动策略
 
 **实测结论：** Teams 模式下 Workers 仅发 `idle_notification`，无法通过消息返回结果，需手动 shutdown。直调 Agent 自动通知+完整输出+自动结束。详见 `design.md §5.1`。
@@ -265,12 +292,27 @@ HITL Gate 完整配置结构：
   <具体任务描述>
 ```
 
+**进度上报注入（P2 流式进度）：**
+调度时，从 `~/.claude/orchestrator/templates/progress-injection.md` 加载进度上报模板，嵌入 Agent prompt 末尾。模板指示 Agent 在以下时机通过 Bash 工具上报进度：
+```
+每个子步骤开始时:
+  echo '{"event":"task.substep","orch_id":"<id>","task_id":"<N>","data":{"step_id":"N.M","description":"...","status":"in_progress"}}' >> ~/.claude/orchestrator/events/<orch-id>.jsonl
+
+每个子步骤完成时:
+  echo '{"event":"task.substep","orch_id":"<id>","task_id":"<N>","data":{"step_id":"N.M","description":"...","status":"completed","elapsed_sec":<秒>}}' >> ~/.claude/orchestrator/events/<orch-id>.jsonl
+
+超过30秒无子步骤完成时:
+  echo '{"event":"task.heartbeat",...}' >> ~/.claude/orchestrator/events/<orch-id>.jsonl
+```
+
 **默认使用直调 Agent（fire-and-forget 场景）：**
 ```
 对每个就绪任务，并行调用：
 Agent(
   description: "<5词简短描述>",
-  prompt: "<完整任务描述 + 角色定义 + 输出格式要求>",
+  prompt: "<完整任务描述 + 角色定义 + 输出格式要求 + 进度上报指令>",
+  # 进度上报指令从 ~/.claude/orchestrator/templates/progress-injection.md 加载
+  # 指示 Agent 在每个子步骤开始/完成时通过 Bash 向事件文件追加 JSONL 记录
   subagent_type: "general-purpose",
   model: "<根据任务类型选择：搜索用 haiku/deepseek-flash，开发用 sonnet/deepseek-flash，汇总用 opus/deepseek-pro>",
   run_in_background: true
@@ -303,6 +345,47 @@ TeamCreate(team_name: "orch-<id>", description: "Orchestrator task group")
 | 测试/QA Agent | 中模型（Sonnet/DeepSeek-v4-flash）— 常规测试验证 |
 
 在 Agent prompt 中通过 `model` 参数指定。
+
+#### 5.5 流式进度事件系统（P2）
+
+Coordinator 通过文件轮询方式收集 Agent 上报的进度事件，支持实时进度展示。
+
+**事件类型（7种）：**
+
+| 事件 | 发射者 | 频率 | 用途 |
+|------|--------|------|------|
+| `task.started` | Coordinator | Agent启动时 | 记录启动信息（role/model/预估耗时） |
+| `task.substep` | Agent | 每个子步骤开始+完成 | Agent内部进展可见 |
+| `task.heartbeat` | Agent | 每30秒 | 证明Agent未卡死 |
+| `task.output_preview` | Agent | 产生中间输出时 | 200字输出预览 |
+| `task.completed` | Coordinator | Agent完成时 | 耗时/Token/输出路径 |
+| `checkpoint.saved` | Coordinator | 检查点写入时 | 持久化确认 |
+| `orchestrator.phase` | Coordinator | SOP阶段切换时 | 高层流程进展 |
+
+**传输机制：**
+```
+Agent (后台子进程)
+  └── Bash echo >> ~/.claude/orchestrator/events/<orch-id>.jsonl (append-only)
+       └── Coordinator 通过 tail -f 或调度循环轮询读取
+            └── 按 sequence 字段有序消费 → 格式化展示
+```
+
+**展示模式：**
+- **Compact**: 单行更新 `[orch-003] 📍 [■■■□□□□] Task #3 子步骤 4/7: 编写签发逻辑 [+47s]`
+- **Detail**: HITL暂停或用户查询时展开任务树+子步骤列表+事件时间线
+- **Summary**: 完成汇总表（阶段/角色/耗时/Token四维统计）
+
+**文件结构：**
+```
+~/.claude/orchestrator/
+├── events/<orch-id>.jsonl        ← Agent写入的事件流（append-only JSONL）
+├── seq_tracker/<orch-id>.seq     ← Coordinator消费者的读取游标
+└── templates/progress-injection.md ← Agent进度上报指令模板
+```
+
+**向后兼容：** 事件系统是新增的独立JSONL文件，不影响§4检查点格式。P1文本进度行在消费事件时同步发射。事件文件不存在时自动退回到检查点轮询。
+
+**心跳卡死检测：** Coordinator每调度周期检查：任一运行中Agent的最后心跳 > 90秒前 → 标记 `[!] Task #N 可能卡死 (last heartbeat: <timestamp>)`，用户可选择继续等待或强制重试。
 
 ### Step 6: 结果汇总
 
@@ -343,3 +426,4 @@ TeamCreate(team_name: "orch-<id>", description: "Orchestrator task group")
 - 检查点系统依赖文件读写（Bash + Read/Write 工具）
 - Teams 模式需要 `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` 且非 DeepSeek 环境（默认使用直调 Agent）
 - 永久关闭 Teams 探测：`touch ~/.claude/orchestrator/teams_disabled`
+- 流式进度系统需要 `~/.claude/orchestrator/events/` 和 `~/.claude/orchestrator/seq_tracker/` 目录（首次运行时自动创建）
