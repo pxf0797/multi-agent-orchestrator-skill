@@ -254,21 +254,24 @@ Coordinator 动态分析任务依赖，不套用固定模板。原则：
 ```
 调度决策树:
 
-环境检测:
-  1. 检查 ANTHROPIC_BASE_URL 是否指向 api.anthropic.com（官方 API）
-  2. 检查是否有 Agent Teams 被禁用标记
-  3. 检查历史 Teams 失败记录（~/.claude/orchestrator/teams_disabled）
+1. 检查 ~/.claude/orchestrator/teams_disabled 是否存在
+   ├── 存在 → 直接使用直调 Agent 模式（跳过后续检查）
+   └── 不存在 → 继续步骤 2
 
-调度模式选择:
-  ├── 需要 Worker 间双向交互? → 尝试 Agent Teams
-  │       ├── TeamCreate 成功 → Teams 模式（worker 间可相互通信）
-  │       └── TeamCreate 失败 → 写入禁用标记 → 回退到直调 Agent
-  └── fire-and-forget 任务（默认）→ 直调 Agent
-          └── 不传 team_name，用 Task blockedBy 管理依赖
+2. 判断任务是否需要 Worker 间双向交互？
+   ├── 不需要（默认）→ 使用直调 Agent 模式
+   └── 需要 → 继续步骤 3
+
+3. 检查 Teams 可用性：
+   [ -z "$ANTHROPIC_BASE_URL" ] || [[ "$ANTHROPIC_BASE_URL" == *"api.anthropic.com"* ]]
+   ├── 通过 → 尝试 Teams 模式
+   │       ├── TeamCreate 成功 → Teams 模式（worker 间可相互通信）
+   │       └── TeamCreate 失败 → touch teams_disabled → 回退到直调 Agent
+   └── 不通过 → touch teams_disabled → 使用直调 Agent 模式
 
 Teams 禁用标记: ~/.claude/orchestrator/teams_disabled
-  - 存在此文件 → 永久使用直调模式（避免每次重试失败的 Teams）
-  - 不存在 → 仅当需要双向交互时尝试 Teams，失败后创建此文件
+  - 存在此文件 → 永久使用直调模式（跳过 Teams 探测）
+  - 不存在 → 仅当第2步判断需要双向交互时，才进入第3步尝试 Teams
 ```
 
 ### 5.3 直调 Agent 实现（DeepSeek 兼容 — 默认模式）

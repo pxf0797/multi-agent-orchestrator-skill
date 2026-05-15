@@ -166,7 +166,7 @@ Agent(
   description: "<5词简短描述>",
   prompt: "<完整任务描述 + 角色定义 + 输出格式要求>",
   subagent_type: "general-purpose",
-  model: "<根据任务类型选择 haiku|sonnet|opus>",
+  model: "<根据任务类型选择：搜索用 haiku/deepseek-flash，开发用 sonnet/deepseek-flash，汇总用 opus/deepseek-pro>",
   run_in_background: true
 )
 ```
@@ -188,7 +188,7 @@ TeamCreate(team_name: "orch-<id>", description: "Orchestrator task group")
 
 | 角色 | 模型策略 |
 |---|---|
-| Coordinator | 当前主模型（大模型做复杂推理） |
+| Coordinator | 大模型（Opus/DeepSeek-v4-pro）— 复杂推理和规划 |
 | 代码开发 Agent | 中模型（Sonnet/DeepSeek-v4-flash） |
 | 搜索 Agent | 小模型（Haiku/DeepSeek-v4-flash） |
 | 写作/汇总 Agent | 大模型（Opus/DeepSeek-v4-pro） |
