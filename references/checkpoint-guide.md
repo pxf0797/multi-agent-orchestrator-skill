@@ -76,18 +76,69 @@ pending → in_progress → completed
 
 4. 归档：移动检查点到 `archive/`，标记 `status: "archived"`
 
+## DAG 快照（动态调整追踪）
+
+当 DAG 在运行时发生调整（Split/Merge/Append/Replan），每次变更记录一个快照：
+
+```json
+{
+  "version": 2,
+  "timestamp": "2026-05-15T18:15:00+08:00",
+  "trigger": "split|merge|append|replan",
+  "description": "变更原因和详情",
+  "tasks_snapshot": ["T1", "T2", "T3a", "T3b", "T4"]
+}
+```
+
+- `version`: DAG 版本号，从 1 开始递增
+- `trigger`: 触发本次调整的原因
+- `tasks_snapshot`: 调整后的完整任务 ID 列表
+- 中断恢复时，使用最新版本的 DAG 快照
+
 ## 清理策略
 
 - **自动归档**：`status: "completed"` 超过 7 天的检查点移动到 `archive/`
 - **输出清理**：`archive/` 中的检查点关联的 output 文件保留 30 天后删除
 - **手动清理**：`/orchestrate clean` 删除所有已完成检查点
 
-## 错误处理
+## 错误处理（三级分级恢复）
 
-| 错误类型 | 处理 |
-|---|---|
-| Agent 超时 (>600s) | 标记 `failed`，自动重试 1 次，仍失败则跳过 |
-| Agent 返回错误 | 记录错误信息到检查点，重试 1 次 |
-| 检查点写入失败 | 重试 3 次，仍失败则输出警告继续 |
-| Teams 创建失败 | 创建 `teams_disabled`，回退到直调模式 |
-| 全部 Agent 失败 | 标记 `status: "failed"`，输出诊断信息 |
+### 错误分类
+
+| 级别 | 名称 | 典型信号 | 恢复策略 | 最大重试 | 耗尽后动作 |
+|------|------|---------|---------|---------|-----------|
+| **E1** | 局部错误 | 超时、工具调用失败、格式解析错 | 指数退避重试 (1s→4s→16s) | 3 次 | 非关键任务:skip; 关键任务:升级E3 |
+| **E2** | 上游错误 | 验证不通过、输入数据矛盾、引用缺失 | 回溯上游重执行+Agent反馈 | 上游2次 | 升级E3 |
+| **E3** | 结构错误 | 多Agent同时失败、重试耗尽、DAG前提矛盾 | Replan模式:暂停→调整DAG→HITL确认 | Coordinator评估 | 用户决策 |
+
+### 恢复流程
+
+```
+Agent 失败
+  ├── E1 局部错误
+  │     → 指数退避: 1s → 4s → 16s (最多3次)
+  │     → 3次后仍失败:
+  │         ├── 非关键任务 → skip, 标记 failed
+  │         └── 关键任务 → 升级为 E3
+  │
+  ├── E2 上游错误
+  │     → 找到上游 Agent, 注入 Verifier 反馈
+  │     → 上游 Agent 重新执行 (最多2次)
+  │     → 2次后仍失败 → 升级为 E3
+  │
+  └── E3 结构错误
+        → 暂停全编排
+        → Coordinator 进入 Replan
+        → 输出调整方案
+        → HITL approval gate → 用户确认
+        → 按新 DAG 继续
+```
+
+### 检查点新增字段
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `error_type` | `E1\|E2\|E3\|null` | Agent 失败时的错误分级 |
+| `retry_count` | number | 当前任务已重试次数 |
+| `recovery_action` | `retry\|replan\|skip\|escalate\|null` | 采取的恢复动作 |
+
