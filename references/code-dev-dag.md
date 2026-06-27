@@ -68,6 +68,10 @@
 2. 遵守接口契约中定义的边界
 3. 包含基本的错误处理
 4. 完成后写入 ~/.claude/orchestrator/output/<module-name>.txt 简要记录做了什么
+5. 接口契约变更或关键设计决策时，追加到共享上下文：
+   echo '{"type":"finding","agent":"<N>","finding":"接口变更: <描述>","source":"<文件名>","confidence":"high"}' >> ~/.claude/orchestrator/output/<orch-id>-shared.jsonl
+6. 开始开发前，检查共享上下文了解并行模块的接口约定：
+   tail -10 ~/.claude/orchestrator/output/<orch-id>-shared.jsonl 2>/dev/null || echo "尚未有共享记录"
 ```
 
 ### Architect Agent（架构设计）
@@ -141,6 +145,8 @@
 ## 2. 失败用例详情
 ## 3. 覆盖率评估
 ## 4. 建议
+5. 发现集成问题时，追加到共享上下文：
+   echo '{"type":"warning","agent":"<N>","finding":"集成问题: <描述>"}' >> ~/.claude/orchestrator/output/<orch-id>-shared.jsonl
 ```
 
 ### Code Review Agent（可选）
