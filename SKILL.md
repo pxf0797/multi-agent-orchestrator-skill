@@ -55,19 +55,19 @@ SOP 使用方式：
 
 **代码开发 DAG 模板**（详见 `references/code-dev-dag.md`）：
 ```
-并行模块开发(T1...Tn) → 集成汇总(Tx) → Code Review(Tx+1,可选)
+并行模块开发(T1...Tn) → 并行验证(Tx...Ty,Standard) → 集成汇总(Tz) → 集成验证(Strict) → Code Review(可选)
 ```
 
 **深度研究 DAG 模板**（详见 `references/deep-research-dag.md`）：
 ```
-并行搜索(T1...Tn) → 并行写作(Tn+1...Tm) → 汇总报告(Tm+1)
+并行搜索(T1...Tn) → 搜索验证(Light) → 并行写作(Tn+1...Tm) → 写作验证(Light) → 汇总报告(Tm+1) → 报告验证(Standard)
 ```
 
 **通用 DAG**：动态分析依赖，原则 — 无依赖=并行，有依赖=blockedBy
 
-**JSON 结构化任务定义（DSL 短期实现）：**
+**JSON 结构化任务定义：**
 
-作为 DSL 的轻量替代，Coordinator 可使用 JSON 结构声明任务计划（便于验证和人工调整）：
+Coordinator 使用 JSON 结构声明任务计划（便于验证和人工调整）：
 
 ```json
 {
@@ -91,22 +91,7 @@ SOP 使用方式：
 }
 ```
 
-Coordinator 将此 JSON 解析后，逐条调用 TaskCreate + 设置 blockedBy，生成可执行的 DAG。
-
-**DSL 文件编译（P2 完整方案）：**
-
-当用户提供 `.dsl` 文件路径时（如 `/orchestrate @file:auth-system.dsl`），Coordinator 调用 DSL 解析引擎：
-```
-dsl文件 → [解析器] → AST → [编译器] → JSON Plan → TaskCreate序列
-```
-
-解析引擎规划位于 `scripts/dsl-parser.py`（P2 实现中，详见 `dsl-engine-design.md`），支持两阶段管道：
-- Stage 1 (解析): `.dsl` 文本 → AST（完整语法：@plan/@task/@parallel/@depends_on/@conditional/@human_approval）
-- Stage 2 (编译): AST → JSON Plan → 自动生成 TaskCreate + blockedBy + hitl_gates
-
-编译时自动检测：循环依赖(E001)、未定义引用(E002)、并行内依赖冲突(E003)、缺@plan声明(E004)、非法角色/模型值(E005)、重复任务名(E006)、空条件表达式(E007)
-
-未提供 `.dsl` 文件时，Coordinator 使用上述 JSON 结构化定义或自由文本拆解。
+Coordinator 将此 JSON 解析后，逐条调用 TaskCreate + 设置 blockedBy，生成可执行的 DAG。也可直接使用自由文本描述任务拆解方案。
 
 优势：结构化、可人工审查修改、可保存为模板复用。
 
@@ -379,7 +364,7 @@ TeamCreate(team_name: "orch-<id>", description: "Orchestrator task group")
 
 Coordinator 通过文件轮询方式收集 Agent 上报的进度事件，支持实时进度展示。
 
-**事件类型（7种）：**
+**事件类型（8种）：**
 
 | 事件 | 发射者 | 频率 | 用途 |
 |------|--------|------|------|

@@ -67,7 +67,7 @@ Also auto-triggers on keywords: 并行, 多个 agent, 同时, swarm, team.
 
 See [design.md](design.md) for the full architecture design, including:
 - External framework benchmarking (LangGraph, CrewAI, MetaGPT, etc.)
-- Declarative dependency DSL design
+
 - Role template library
 - Domain SOP templates
 - Human-in-the-loop (HITL) design
