@@ -75,6 +75,10 @@
 3. 整理搜集到的原始信息到 ~/.claude/orchestrator/output/search-<dimension>.md
 4. 格式：标题 + 来源链接 + 关键摘要（不要做深入分析，只做信息整理）
 5. 标注信息的发布时间和可信度
+6. 发现关键信息时，追加到共享上下文（每次 2-5 条）：
+   echo '{"type":"finding","agent":"<N>","finding":"<100字发现>","source":"<URL>","confidence":"high|medium|low"}' >> ~/.claude/orchestrator/output/<orch-id>-shared.jsonl
+7. 开始搜索前，检查共享上下文了解并行 Agent 方向：
+   tail -10 ~/.claude/orchestrator/output/<orch-id>-shared.jsonl 2>/dev/null || echo "尚未有共享记录"
 ```
 
 ### 写作 Agent
@@ -124,17 +128,17 @@
 
 ### 拆解结果
 
-| Task ID | 子任务 | blockedBy | Agent 类型 |
-|---|---|---|---|
-| T1 | 搜索 Claude Code Agent 能力 | [] | general-purpose |
-| T2 | 搜索 Cursor Agent 能力 | [] | general-purpose |
-| T3 | 搜索第三方对比评测 | [] | general-purpose |
-| T4 | 搜索 Anthropic/Cursor 官方文档 | [] | general-purpose |
-| T5 | Verify: 搜索质量 (Light) | [T1, T2, T3, T4] | general-purpose |
-| T6 | 整理 Claude Code 部分 | [T5] | general-purpose |
-| T7 | 整理 Cursor 部分 | [T5] | general-purpose |
-| T8 | Verify: 写作质量 (Light) | [T6, T7] | general-purpose |
-| T9 | 合成最终对比报告 | [T8] | general-purpose |
-| T10 | Verify: 报告质量 (Standard) | [T9] | general-purpose |
+| Task ID | 子任务 | blockedBy | criticality | Agent 类型 |
+|---|---|---|---|---|---|
+| T1 | 搜索 Claude Code Agent 能力 | [] | critical | general-purpose |
+| T2 | 搜索 Cursor Agent 能力 | [] | critical | general-purpose |
+| T3 | 搜索第三方对比评测 | [] | normal | general-purpose |
+| T4 | 搜索 Anthropic/Cursor 官方文档 | [] | normal | general-purpose |
+| T5 | Verify: 搜索质量 (Light) | [T1, T2, T3, T4] | normal | general-purpose |
+| T6 | 整理 Claude Code 部分 | [T5] | critical | general-purpose |
+| T7 | 整理 Cursor 部分 | [T5] | critical | general-purpose |
+| T8 | Verify: 写作质量 (Light) | [T6, T7] | normal | general-purpose |
+| T9 | 合成最终对比报告 | [T8] | critical | general-purpose |
+| T10 | Verify: 报告质量 (Standard) | [T9] | optional | general-purpose |
 
 T1/T2/T3/T4 并行 → T5 验证搜索 → T6+T7 并行写作 → T8 验证写作 → T9 汇总 → T10 最终验证

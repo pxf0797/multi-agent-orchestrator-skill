@@ -134,18 +134,18 @@
 
 ### 拆解结果
 
-| Task ID | 子任务 | blockedBy | Agent 类型 |
-|---|---|---|---|
-| T1 | 实现注册模块（/api/register） | [] | general-purpose |
-| T2 | 实现登录模块（/api/login） | [] | general-purpose |
-| T3 | 实现 JWT 中间件 | [] | general-purpose |
-| T4 | 实现密码重置（/api/reset-password） | [T2] | general-purpose |
-| T5 | Verify: 注册模块 (Standard) | [T1] | general-purpose |
-| T6 | Verify: 登录模块 (Standard) | [T2] | general-purpose |
-| T7 | Verify: JWT 中间件 (Standard) | [T3] | general-purpose |
-| T8 | Verify: 密码重置 (Standard) | [T4] | general-purpose |
-| T9 | 集成测试 + 入口文件 | [T5, T6, T7, T8] | general-purpose |
-| T10 | Verify: 集成验证 (Strict) | [T9] | general-purpose |
-| T11 | Code Review | [T10] | code-reviewer |
+| Task ID | 子任务 | blockedBy | criticality | Agent 类型 |
+|---|---|---|---|---|---|
+| T1 | 实现注册模块（/api/register） | [] | critical | general-purpose |
+| T2 | 实现登录模块（/api/login） | [] | critical | general-purpose |
+| T3 | 实现 JWT 中间件 | [] | critical | general-purpose |
+| T4 | 实现密码重置（/api/reset-password） | [T2] | critical | general-purpose |
+| T5 | Verify: 注册模块 (Standard) | [T1] | normal | general-purpose |
+| T6 | Verify: 登录模块 (Standard) | [T2] | normal | general-purpose |
+| T7 | Verify: JWT 中间件 (Standard) | [T3] | normal | general-purpose |
+| T8 | Verify: 密码重置 (Standard) | [T4] | normal | general-purpose |
+| T9 | 集成测试 + 入口文件 | [T5, T6, T7, T8] | critical | general-purpose |
+| T10 | Verify: 集成验证 (Strict) | [T9] | critical | general-purpose |
+| T11 | Code Review | [T10] | optional | code-reviewer |
 
 T1/T2/T3 并行 → T4 等待 T2 → T5-8 并行验证 → T9 集成 → T10 严格验证 → T11
