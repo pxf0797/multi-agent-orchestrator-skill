@@ -283,7 +283,7 @@ HITL Gate 完整配置结构：
   检查点保存:  "[orch-<id>] 💾 检查点已更新 (mode: <checkpoint_mode>)"
   HITL 触发:   "[orch-<id>] ⏸️ 等待审批: <gate.question>"
   子步骤完成:  "[orch-<id>] 📍 Task #N 子步骤 <step_id>: <描述> (<当前>/<总数>)"
-  全部完成:    "[orch-<id>] 🎉 全部完成! 总耗时: <time>, Token: <total>"
+  全部完成:    "[orch-<id>] 🎉 全部完成! 耗时 <time> — 详见下方统计摘要 ↓ (见 §6 结果汇总)"
 
 心跳机制：
   每个 Agent 每 30 秒发射一次 task.heartbeat 事件（由进度注入模板自动触发）
@@ -409,13 +409,31 @@ Agent (后台子进程)
 - **Detail**: HITL暂停或用户查询时展开任务树+子步骤列表+事件时间线
 - **Summary**: 完成汇总表（阶段/角色/耗时/Token四维统计）
 
-**文件结构：**
+**文件结构（完整权威视图）：**
 ```
 ~/.claude/orchestrator/
-├── events/<orch-id>.jsonl        ← Agent写入的事件流（append-only JSONL）
-├── seq_tracker/<orch-id>.seq     ← Coordinator消费者的读取游标
-└── templates/progress-injection.md ← Agent进度上报指令模板
+├── checkpoints/
+│   ├── orch-YYYYMMDD-NNN.json    ← 活跃编排任务检查点
+│   └── archive/                   ← 已完成/已放弃的归档
+├── events/
+│   └── <orch-id>.jsonl            ← Agent写入的事件流（append-only JSONL）
+├── seq_tracker/
+│   └── <orch-id>.seq              ← Coordinator消费者的读取游标
+├── output/
+│   ├── search-<dim>.md            ← Researcher Agent 原始搜索结果
+│   ├── write-<dim>.md             ← Writer Agent 整理报告
+│   ├── integration-summary.txt   ← QA Agent 集成结果
+│   ├── review-report.txt          ← Reviewer Agent 审查报告
+│   ├── architecture-design.md    ← Architect Agent 架构方案
+│   ├── qa-report.md               ← QA Agent 测试报告
+│   └── <orch-id>-shared.jsonl    ← 轻量共享上下文（§5.8）
+├── templates/
+│   └── progress-injection.md      ← Agent进度上报指令模板
+├── teams_disabled                  ← Teams 功能禁用标记
+└── history.log                     ← 操作日志
 ```
+
+此目录树为唯一权威视图。checkpoint-guide.md 中的目录结构与此互补，详细内容以本处为准。
 
 **向后兼容：** 事件系统是新增的独立JSONL文件，不影响§4检查点格式。P1文本进度行在消费事件时同步发射。事件文件不存在时自动退回到检查点轮询。
 

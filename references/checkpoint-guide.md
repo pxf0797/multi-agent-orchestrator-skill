@@ -2,17 +2,14 @@
 
 ## 目录结构
 
+检查点系统涉及的子目录。完整目录树见 SKILL.md §5.5（唯一权威视图）。
+
 ```
 ~/.claude/orchestrator/
 ├── checkpoints/
 │   ├── orch-YYYYMMDD-NNN.json    ← 当前活跃的编排任务
-│   └── archive/
-│       └── orch-YYYYMMDD-NNN.json ← 已完成/已放弃的归档
-├── output/                         ← Agent 输出文件
-│   ├── search-<dimension>.md
-│   ├── write-<dimension>.md
-│   └── integration-summary.txt
-├── teams_disabled                  ← Teams 功能禁用标记
+│   └── archive/                   ← 已完成/已放弃的归档
+├── output/                         ← Agent 输出文件 + 共享上下文
 └── history.log                     ← 操作日志
 ```
 
@@ -26,6 +23,7 @@
   "status": "in_progress",
   "scenario": "code_dev",
   "goal": "实现用户认证系统",
+  "checkpoint_mode": "full",
   "model_provider": "deepseek",
   "teams_mode": false,
   "summary": null,
@@ -40,8 +38,39 @@
       "agent_output": "已创建 register.ts，实现输入验证...",
       "agent_session_id": "d800ec28-be71-481e-9a27-8a76e92880e6",
       "error": null,
+      "error_type": null,
+      "retry_count": 0,
+      "recovery_action": null,
+      "criticality": "critical",
       "started_at": "2026-05-15T18:01:00+08:00",
-      "completed_at": "2026-05-15T18:08:00+08:00"
+      "completed_at": "2026-05-15T18:08:00+08:00",
+      "sub_steps": [
+        {
+          "step_id": "1.1",
+          "description": "设计数据模型",
+          "status": "completed",
+          "output_summary": "定义 User schema"
+        }
+      ]
+    }
+  ],
+  "hitl_gates": [
+    {
+      "gate_id": "approval-1",
+      "after_task": "3",
+      "mode": "approval",
+      "question": "请确认后继续",
+      "status": "pending",
+      "user_response": null
+    }
+  ],
+  "dag_snapshots": [
+    {
+      "version": 1,
+      "timestamp": "2026-05-15T18:00:00+08:00",
+      "trigger": "initial",
+      "description": "初始 DAG",
+      "tasks_snapshot": ["1", "2", "3", "4", "5", "6"]
     }
   ]
 }
@@ -118,8 +147,9 @@ Agent 失败
   ├── E1 局部错误
   │     → 指数退避: 1s → 4s → 16s (最多3次)
   │     → 3次后仍失败:
-  │         ├── 非关键任务 → skip, 标记 failed
-  │         └── 关键任务 → 升级为 E3
+  │         ├── criticality=optional → 标记 failed，跳过（不阻塞 DAG）
+  │         ├── criticality=normal   → 标记 failed，通知下游自行处理缺失输入
+  │         └── criticality=critical → 升级为 E3，触发 Replan
   │
   ├── E2 上游错误
   │     → 找到上游 Agent, 注入 Verifier 反馈
