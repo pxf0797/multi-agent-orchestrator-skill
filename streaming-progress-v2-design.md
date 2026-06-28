@@ -11,7 +11,7 @@
 ```json
 {
   "event": "<event_type>",
-  "orch_id": "orch-20260515-003",
+  "orch_id": "orch-20260515-180322-12345",
   "task_id": "3",
   "timestamp": "2026-05-15T18:03:22.145Z",
   "sequence": 17,
@@ -93,7 +93,7 @@
     "duration_sec": 293,
     "token_estimate": 4200,
     "output_summary": "JWT 中间件完整实现：签发、验证、刷新三个端点",
-    "output_path": "~/.claude/orchestrator/outputs/orch-003/task-3-output.md",
+    "output_path": "~/.claude/orchestrator/outputs/orch-180322-12345/task-3-output.md",
     "task_progress": "3/6",
     "phase_progress": "2/4",
     "unblocked_tasks": ["4", "5"],
@@ -111,7 +111,7 @@
     "mode": "full|incremental|delta",
     "sequence": 7,
     "size_bytes": 12500,
-    "path": ".../checkpoints/orch-003.json",
+    "path": ".../checkpoints/orch-180322-12345.json",
     "tasks_snapshot": {"completed": 3, "in_progress": 2, "pending": 1, "failed": 0}
   }
 }
@@ -155,7 +155,7 @@ Coordinator (主会话)
 
 **写入**：Agent 在关键节点通过注入的 Bash 脚本执行：
 ```bash
-echo '{"event":"task.substep","orch_id":"orch-003","task_id":"3",...}' >> ~/.claude/orchestrator/events/orch-003.jsonl
+echo '{"event":"task.substep","orch_id":"orch-180322-12345","task_id":"3",...}' >> ~/.claude/orchestrator/events/orch-180322-12345.jsonl
 ```
 
 ### 方案对比
@@ -202,10 +202,10 @@ pending → queued → running(substeps) → completed
 
 ### Compact 模式（实时单行）
 ```
-[orch-003] 📍 [■■■□□□□] Task #3 子步骤 4/7: 编写JWT签发逻辑... [+47s]
-[orch-003] ✅ [■■■□□□□] Task #3 JWT中间件 完成 (293s) 进度: 3/6
-[orch-003] ⏸️ [■■■■■□□] 等待审批: 请审阅测试结果后决定是否继续
-[orch-003] 🎉 [■■■■■■■] 全部完成! 耗时620s, Token≈24K
+[orch-180322-12345] 📍 [■■■□□□□] Task #3 子步骤 4/7: 编写JWT签发逻辑... [+47s]
+[orch-180322-12345] ✅ [■■■□□□□] Task #3 JWT中间件 完成 (293s) 进度: 3/6
+[orch-180322-12345] ⏸️ [■■■■■□□] 等待审批: 请审阅测试结果后决定是否继续
+[orch-180322-12345] 🎉 [■■■■■■■] 全部完成! 耗时620s, Token≈24K
 ```
 
 ### Detail 模式（HITL暂停或用户查询时展开）

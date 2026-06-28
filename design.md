@@ -334,7 +334,7 @@ Coordinator:     大模型（Opus/DeepSeek-v4-pro） — 复杂推理和规划
 
 ```json
 {
-  "orchestrator_id": "orch-20260515-001",
+  "orchestrator_id": "orch-20260515-180000-12345",
   "created_at": "2026-05-15T18:00:00Z",
   "updated_at": "2026-05-15T18:15:00Z",
   "status": "in_progress | completed | failed",
@@ -566,7 +566,7 @@ Coordinator:
 用户: (上次被中断) 继续上次的任务
 
 Coordinator:
-  1. 扫描 checkpoints/ → 发现 orch-20260515-001 (in_progress)
+  1. 扫描 checkpoints/ → 发现 orch-20260515-180000-12345 (in_progress)
   2. "检测到未完成任务：用户认证系统开发，进度 3/6。Task 3 (JWT中间件) 已完成 2/3 子步骤。是否恢复？"
   3. 用户确认 → 恢复 DAG 状态 → 注入已完成子步骤上下文 → 继续执行
 ```

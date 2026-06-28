@@ -7,7 +7,7 @@
 ```
 ~/.claude/orchestrator/
 ├── checkpoints/
-│   ├── orch-YYYYMMDD-NNN.json    ← 当前活跃的编排任务
+│   ├── orch-YYYYMMDD-HHMMSS-<pid>.json    ← 当前活跃的编排任务（时间戳+PID，天然唯一）
 │   └── archive/                   ← 已完成/已放弃的归档
 ├── output/                         ← Agent 输出文件 + 共享上下文
 └── history.log                     ← 操作日志
@@ -17,7 +17,7 @@
 
 ```json
 {
-  "orchestrator_id": "orch-20260515-001",
+  "orchestrator_id": "orch-20260515-180000-12345",
   "created_at": "2026-05-15T18:00:00+08:00",
   "updated_at": "2026-05-15T18:30:00+08:00",
   "status": "in_progress",
