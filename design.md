@@ -303,10 +303,10 @@ Teams 禁用标记: ~/.claude/orchestrator/teams_disabled
 ### 5.5 模型分配策略（Token Efficiency）
 
 ```
-Coordinator:     大模型（Opus/DeepSeek-v4-pro） — 复杂推理和规划
-并行开发 Agent:  中模型（Sonnet/DeepSeek-v4-flash） — 代码生成
-搜索 Agent:      小模型（Haiku/DeepSeek-v4-flash） — 信息搜集
-汇总 Agent:      大模型（Opus/DeepSeek-v4-pro） — 需要全局视角
+Coordinator:     大模型（opus） — 复杂推理和规划
+并行开发 Agent:  中模型（sonnet） — 代码生成
+搜索 Agent:      小模型（haiku） — 信息搜集
+汇总 Agent:      大模型（opus） — 需要全局视角
 ```
 
 ---

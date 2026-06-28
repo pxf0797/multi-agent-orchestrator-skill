@@ -2,7 +2,9 @@
 
 此模板由 Coordinator 在调度 Agent 时嵌入 prompt 末尾，指示 Agent 通过 Bash 向事件文件上报进度。
 
-**使用方式：** Coordinator 读取此文件 → 替换 `<orch-id>` 和 `<N>` 占位符 → **确认所有 `__ORCH_ID__` / `__TASK_ID__` 已替换为实际值** → 注入 Agent prompt 末尾。
+**使用方式：** Coordinator 读取此文件 → 替换 `<orch-id>`、`<N>`（逻辑 T-ID，如 `T3`）和 `<TOTAL_SUBSTEPS>`（预估子步骤总数，3-8 之间）占位符 → **确认所有占位符已替换为实际值** → 注入 Agent prompt 末尾。
+
+**子步骤编号规范：** step_id 格式为 `<T-ID>.<序号>`（如 `T3.1`, `T3.2`）。Coordinator 注入时预估合理子步骤总数，Agent 在任务开始时按预估总数规划子步骤，确保编号连续递增。
 
 ---
 
