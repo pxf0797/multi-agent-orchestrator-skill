@@ -284,6 +284,7 @@ HITL Gate 完整配置结构：
   HITL 触发:   "[orch-<id>] ⏸️ 等待审批: <gate.question>"
   子步骤完成:  "[orch-<id>] 📍 Task #N 子步骤 <step_id>: <描述> (<当前>/<总数>)"
   全部完成:    "[orch-<id>] 🎉 全部完成! 耗时 <time> — 详见下方统计摘要 ↓ (见 §6 结果汇总)"
+  报告交付:    "[orch-<id>] 📄 最终报告已保存: ./<文件名>"
 
 心跳机制：
   每个 Agent 每 30 秒发射一次 task.heartbeat 事件（由进度注入模板自动触发）
@@ -690,6 +691,28 @@ Replan:   "[orch-<id>] 🛑 E3触发 Replan: <原因> — 等待确认新方案"
 🏆 效率:  <小模型名> 处理 <X>% 任务, 仅消耗 <X>% Token
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
+
+**成果交付（将最终产物复制到工作目录）：**
+
+编排完成后，必须将最终可交付产物从 orchestrator 内部 `output/` 目录**复制到用户当前工作目录**，使用人类可读的文件名：
+
+```bash
+# Coordinator 在汇总阶段完成后执行
+# 1. 根据 goal 生成合理的文件名（中文/英文均可，去除特殊字符）
+DELIVERABLE_NAME="<从 goal 提炼的简短文件名>.md"   # 例: "MacMini服务器管理研究报告.md"
+# 2. 复制到工作目录
+cp ~/.claude/orchestrator/output/${ORCH_ID}/<最终报告文件> "./${DELIVERABLE_NAME}"
+echo "📄 最终报告已保存: ./${DELIVERABLE_NAME}"
+```
+
+**命名规则：**
+| 场景 | 命名模式 | 示例 |
+|------|---------|------|
+| `deep_research` | `{研究主题}-研究报告.md` | `Claude-Code-vs-Cursor-Agent能力对比报告.md` |
+| `code_dev` | `{项目名}-开发总结.md` | `用户认证系统-开发总结.md` |
+| `general` | `{任务摘要}.md` | `NoneType-Bug根因分析报告.md` |
+
+如果最终产物包含多个文件（如代码 + 报告），在工作目录下创建以项目名命名的子目录存放。
 
 **归档操作：**
 1. 标记检查点 `status: "completed"`
