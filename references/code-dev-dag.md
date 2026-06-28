@@ -67,11 +67,11 @@
 1. 只实现本模块，不触及依赖的其他模块
 2. 遵守接口契约中定义的边界
 3. 包含基本的错误处理
-4. 完成后写入 ~/.claude/orchestrator/output/<module-name>.txt 简要记录做了什么
+4. 完成后写入 ~/.claude/orchestrator/output/<orch-id>/<module-name>.txt 简要记录做了什么
 5. 接口契约变更或关键设计决策时，追加到共享上下文：
-   echo '{"type":"finding","agent":"<N>","finding":"接口变更: <描述>","source":"<文件名>","confidence":"high"}' >> ~/.claude/orchestrator/output/<orch-id>-shared.jsonl
+   echo '{"type":"finding","agent":"<N>","finding":"接口变更: <描述>","source":"<文件名>","confidence":"high"}' >> ~/.claude/orchestrator/output/<orch-id>/shared.jsonl
 6. 开始开发前，检查共享上下文了解并行模块的接口约定：
-   tail -10 ~/.claude/orchestrator/output/<orch-id>-shared.jsonl 2>/dev/null || echo "尚未有共享记录"
+   tail -10 ~/.claude/orchestrator/output/<orch-id>/shared.jsonl 2>/dev/null || echo "尚未有共享记录"
 ```
 
 ### Architect Agent（架构设计）
@@ -90,7 +90,7 @@
    - 对外接口契约（输入/输出/协议）
 2. 标注模块间依赖关系和数据流方向
 3. 识别关键技术风险和假设
-4. 输出到 ~/.claude/orchestrator/output/architecture-design.md
+4. 输出到 ~/.claude/orchestrator/output/<orch-id>/architecture-design.md
 
 输出格式：
 # 架构设计
@@ -116,7 +116,7 @@
 2. 解决接口冲突
 3. 确保整体功能完整可用
 4. 运行集成测试（如果有）
-5. 汇总输出到 ~/.claude/orchestrator/output/integration-summary.txt
+5. 汇总输出到 ~/.claude/orchestrator/output/<orch-id>/integration-summary.txt
 ```
 
 ### QA Agent（集成测试）
@@ -136,7 +136,7 @@
    - 通过/失败用例数
    - 失败用例的复现步骤
    - 覆盖率评估
-4. 输出到 ~/.claude/orchestrator/output/qa-report.md
+4. 输出到 ~/.claude/orchestrator/output/<orch-id>/qa-report.md
 
 输出格式：
 # 集成测试报告
@@ -146,7 +146,7 @@
 ## 3. 覆盖率评估
 ## 4. 建议
 5. 发现集成问题时，追加到共享上下文：
-   echo '{"type":"warning","agent":"<N>","finding":"集成问题: <描述>"}' >> ~/.claude/orchestrator/output/<orch-id>-shared.jsonl
+   echo '{"type":"warning","agent":"<N>","finding":"集成问题: <描述>"}' >> ~/.claude/orchestrator/output/<orch-id>/shared.jsonl
 ```
 
 ### Code Review Agent（可选）
@@ -158,7 +158,7 @@
 3. 安全隐患（SQL注入、XSS、凭证泄露等）
 4. 代码可读性
 
-输出审查报告到 ~/.claude/orchestrator/output/review-report.txt
+输出审查报告到 ~/.claude/orchestrator/output/<orch-id>/review-report.txt
 ```
 
 ### Verifier Agent（质检门禁）

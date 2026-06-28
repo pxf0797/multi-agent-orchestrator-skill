@@ -93,7 +93,7 @@
     "duration_sec": 293,
     "token_estimate": 4200,
     "output_summary": "JWT 中间件完整实现：签发、验证、刷新三个端点",
-    "output_path": "~/.claude/orchestrator/outputs/orch-180322-12345/task-3-output.md",
+    "output_path": "~/.claude/orchestrator/output/orch-180322-12345/task-3-output.md",
     "task_progress": "3/6",
     "phase_progress": "2/4",
     "unblocked_tasks": ["4", "5"],

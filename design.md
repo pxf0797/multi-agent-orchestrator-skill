@@ -335,6 +335,7 @@ Coordinator:     大模型（Opus/DeepSeek-v4-pro） — 复杂推理和规划
 ```json
 {
   "orchestrator_id": "orch-20260515-180000-12345",
+  "coordinator_pid": 12345,
   "created_at": "2026-05-15T18:00:00Z",
   "updated_at": "2026-05-15T18:15:00Z",
   "status": "in_progress | completed | failed",
@@ -448,15 +449,20 @@ Level 3: 精确级恢复（Delta 检查点增强 — 远期目标）
 
 ```
 1. Coordinator 启动时扫描 ~/.claude/orchestrator/checkpoints/
-2. 发现 status=in_progress 的检查点 → 询问用户是否恢复
-3. 恢复：
+2. 发现 status=in_progress 的检查点 → PID 存活检测:
+   ├── 读取检查点的 coordinator_pid 字段
+   ├── kill -0 <pid> 2>/dev/null:
+   │   ├── 进程存活 → 跳过（该编排可能在另一窗口运行中）
+   │   └── 进程已退出 → 确认废弃，进入恢复询问
+3. 确认废弃后，询问用户是否恢复
+4. 恢复：
    ├── 读取已完成任务的 agent_output 和子步骤摘要
    ├── 识别未完成的任务（以及任务内未完成的子步骤）
    ├── 构建恢复上下文：已完成子步骤摘要 + 原始剩余任务描述
    ├── 重新 spawn Agent 执行未完成部分
    └── 继续 DAG 执行
-4. 所有任务完成后 → 归档到 archive/，标记 status=completed
-5. 清理增量快照（保留最后一个 Full Checkpoint 的快照集）
+5. 所有任务完成后 → 归档到 archive/，标记 status=completed
+6. 清理增量快照（保留最后一个 Full Checkpoint 的快照集）
 ```
 
 ---

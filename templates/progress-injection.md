@@ -2,7 +2,7 @@
 
 此模板由 Coordinator 在调度 Agent 时嵌入 prompt 末尾，指示 Agent 通过 Bash 向事件文件上报进度。
 
-**使用方式：** Coordinator 读取此文件 → 替换 `<orch-id>` 和 `<N>` 占位符 → 注入 Agent prompt 末尾。
+**使用方式：** Coordinator 读取此文件 → 替换 `<orch-id>` 和 `<N>` 占位符 → **确认所有 `__ORCH_ID__` / `__TASK_ID__` 已替换为实际值** → 注入 Agent prompt 末尾。
 
 ---
 
@@ -49,6 +49,8 @@ Coordinator 注入时，在上述模板末尾追加：
 - 所有 echo 命令追加到 JSONL 文件，不覆盖已有内容
 - 如果 JSONL 文件所在目录不存在，先 mkdir -p ~/.claude/orchestrator/events/
 - 双引号需转义为 \"
+- **单条事件不得超过 500 字节**（macOS PIPE_BUF 为 512 字节，超限会导致并发写入时 JSONL 行交错损坏）
+- output_preview 的 preview 字段不得超过 200 字符
 - 进度上报失败不应阻塞主任务执行（静默失败）
 ```
 

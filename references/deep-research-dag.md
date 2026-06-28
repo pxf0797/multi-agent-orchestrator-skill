@@ -72,13 +72,13 @@
 要求：
 1. 使用 WebSearch 搜索多个关键词
 2. 对关键页面使用 WebFetch 获取详细内容
-3. 整理搜集到的原始信息到 ~/.claude/orchestrator/output/search-<dimension>.md
+3. 整理搜集到的原始信息到 ~/.claude/orchestrator/output/<orch-id>/search-<dimension>.md
 4. 格式：标题 + 来源链接 + 关键摘要（不要做深入分析，只做信息整理）
 5. 标注信息的发布时间和可信度
 6. 发现关键信息时，追加到共享上下文（每次 2-5 条）：
-   echo '{"type":"finding","agent":"<N>","finding":"<100字发现>","source":"<URL>","confidence":"high|medium|low"}' >> ~/.claude/orchestrator/output/<orch-id>-shared.jsonl
+   echo '{"type":"finding","agent":"<N>","finding":"<100字发现>","source":"<URL>","confidence":"high|medium|low"}' >> ~/.claude/orchestrator/output/<orch-id>/shared.jsonl
 7. 开始搜索前，检查共享上下文了解并行 Agent 方向：
-   tail -10 ~/.claude/orchestrator/output/<orch-id>-shared.jsonl 2>/dev/null || echo "尚未有共享记录"
+   tail -10 ~/.claude/orchestrator/output/<orch-id>/shared.jsonl 2>/dev/null || echo "尚未有共享记录"
 ```
 
 ### 写作 Agent
@@ -86,14 +86,14 @@
 ```
 你的任务是基于搜索结果整理以下维度的报告：<维度>
 
-搜索原始材料：~/.claude/orchestrator/output/search-<dimension>.md
+搜索原始材料：~/.claude/orchestrator/output/<orch-id>/search-<dimension>.md
 
 要求：
 1. 阅读原始搜索结果
 2. 结构化整理：核心观点 → 支撑论据 → 案例/数据
 3. 去重：不同来源的相同信息合并
 4. 标注所有引用来源
-5. 输出到 ~/.claude/orchestrator/output/write-<dimension>.md
+5. 输出到 ~/.claude/orchestrator/output/<orch-id>/write-<dimension>.md
 ```
 
 ### 汇总 Agent
@@ -102,8 +102,8 @@
 你的任务是将以下各维度报告合成为一份完整的最终报告：
 
 维度报告：
-- <维度A>: ~/.claude/orchestrator/output/write-A.md
-- <维度B>: ~/.claude/orchestrator/output/write-B.md
+- <维度A>: ~/.claude/orchestrator/output/<orch-id>/write-A.md
+- <维度B>: ~/.claude/orchestrator/output/<orch-id>/write-B.md
 ...
 
 研究课题：<用户原始问题>

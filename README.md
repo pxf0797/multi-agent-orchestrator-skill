@@ -63,6 +63,19 @@ Also auto-triggers on keywords: 并行, 多个 agent, 同时, swarm, team.
 - Claude Code with Agent tool access
 - `~/.claude/orchestrator/` directory (auto-created on first run)
 
+## Maintenance
+
+```bash
+# 清理 7 天前已完成的检查点归档
+find ~/.claude/orchestrator/checkpoints/archive -type f -mtime +7 -delete
+
+# 清理所有已完成的编排输出（保留 7 天）
+find ~/.claude/orchestrator/output -maxdepth 1 -type d -mtime +7 -exec rm -rf {} \;
+
+# 清理孤立的事件文件
+find ~/.claude/orchestrator/events -name '*.jsonl' -mtime +7 -delete
+```
+
 ## Design
 
 See [design.md](design.md) for the full architecture design, including:

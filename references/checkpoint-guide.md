@@ -18,6 +18,7 @@
 ```json
 {
   "orchestrator_id": "orch-20260515-180000-12345",
+  "coordinator_pid": 12345,
   "created_at": "2026-05-15T18:00:00+08:00",
   "updated_at": "2026-05-15T18:30:00+08:00",
   "status": "in_progress",
@@ -90,13 +91,23 @@ pending → in_progress → completed
    ls ~/.claude/orchestrator/checkpoints/orch-*.json 2>/dev/null
    ```
 
-2. 发现 `status: "in_progress"` 的检查点 → 提示用户：
+2. 发现 `status: "in_progress"` 的检查点 → **先做 PID 存活检测**：
+   ```bash
+   CHECKPOINT_PID=$(jq -r '.coordinator_pid' <检查点文件>)
+   if kill -0 "$CHECKPOINT_PID" 2>/dev/null; then
+     echo "跳过（PID $CHECKPOINT_PID 仍存活，可能在另一窗口运行中）"
+   else
+     echo "确认废弃（PID $CHECKPOINT_PID 已退出）"
+   fi
    ```
-   检测到未完成任务：
+   仅当进程已退出时，才提示用户恢复：
+   ```
+   检测到未完成任务（已确认废弃）：
      目标：实现用户认证系统
      场景：代码开发
      进度：3/6 已完成
      上次更新：2026-05-15 18:30
+     原 PID：12345（已退出）
    
    是否恢复？ [恢复] [放弃并归档] [忽略]
    ```
