@@ -93,7 +93,7 @@ pending → in_progress → completed
 
 2. 发现 `status: "in_progress"` 的检查点 → **先做 PID 存活检测**：
    ```bash
-   CHECKPOINT_PID=$(jq -r '.coordinator_pid' <检查点文件>)
+   CHECKPOINT_PID=$(cat <检查点文件>.pid 2>/dev/null)
    if kill -0 "$CHECKPOINT_PID" 2>/dev/null; then
      echo "跳过（PID $CHECKPOINT_PID 仍存活，可能在另一窗口运行中）"
    else
