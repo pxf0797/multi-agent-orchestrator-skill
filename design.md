@@ -1201,10 +1201,9 @@ DAG: 测试 → 性能基准 → [HITL Gate — Approval] → 部署
 | Agent 提示词模板 | `templates/progress-injection.md` | P1 | ✅ |
 | 基础角色模板（全部 7 个角色） | `references/role-templates.md` | P1 | ✅ |
 | 基础 SOP 模板（4 个领域） | `references/sop-templates.md` | P1 | ✅ |
-| Pipeline 手动串联 | `references/pipeline-chaining.md` + `scripts/pipeline-*.sh` | P1 | ✅ |
 | HITL 工作流参考 | `references/hitl-workflow.md` | P1 | ✅ |
 | 快速入门指南 | `references/quick-start.md` | P1 | ✅ |
-| workflow-manager 集成 | SKILL.md §5.9 + `workflow-manager` skill | P1 | ✅ |
+| workflow-manager 配套集成 | SKILL.md §5.9 | P1 | ✅ |
 
 **里程碑 M1** ✅：Coordinator 可完成"接收复杂目标 → 拆解 → 并行调度 Agent → 汇总"的完整闭环，支持中断恢复。
 

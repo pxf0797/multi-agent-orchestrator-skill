@@ -459,9 +459,6 @@ Agent (后台子进程)
 │       └── history.log            ← 本编排的操作日志
 ├── templates/
 │   └── progress-injection.md      ← Agent进度上报指令模板
-├── pipelines/                      ← 多 Run 串联管线状态（§5.9）
-│   └── <pipeline-name>/
-│       └── pipeline-state.json     ← 管线运行状态
 └── teams_disabled                  ← Teams 功能禁用标记
 ```
 
@@ -688,44 +685,16 @@ Replan:   "[orch-<id>] 🛑 E3触发 Replan: <原因> — 等待确认新方案"
 共享写入: "[orch-<id>] 📝 Task #N 追加共享发现: <首50字>..."
 ```
 
----
+#### 5.9 多阶段项目
 
-#### 5.9 多 Run 串联：Pipeline 模式（短期目标）
+当任务需要多个 Orchestrator Run 串联时（如 研究→设计→实现→验证），使用配套的 **Workflow Manager Skill** (`workflow-manager`) 实现 YAML 定义 + 自动阶段调度 + 状态传递。
 
-当单个 Orchestrator Run 无法完成任务时，通过 pipeline 将多个 Run 串联为完整工作流。详见 `references/pipeline-chaining.md`。
+| 场景 | 使用工具 |
+|------|---------|
+| 单次复杂任务 | 本 skill — `/orchestrate` |
+| 多阶段项目 | `workflow-manager` — `/workflow run` |
 
-**核心机制：**
-
-```
-Orchestrator Run 1 → 输出文件 + pipeline-state.json
-  → Orchestrator Run 2（读取上游输出作为上下文）
-  → Orchestrator Run 3（读取上游输出作为上下文）
-  → Pipeline 完成
-```
-
-**管线脚本：**
-- `scripts/pipeline-init.sh <name> <run1> <run2> ...` — 初始化管线状态文件
-- `scripts/pipeline-update.sh <name> <run-index> <status>` — 更新 Run 状态
-- `scripts/pipeline-status.sh <name>` — 查看管线进度
-
-**使用流程：**
-1. 用户发起 `/orchestrate pipeline init <name>` 规划阶段
-2. 依次 `/orchestrate` 每个阶段的目标（Coordinator 自动注入上游输出路径到 `[Shared Context]`）
-3. 每个 Run 完成后 Coordinator 更新 pipeline-state.json
-4. 全部完成 → 生成管线总结报告
-
-**向中期演进：** 手动串联模式稳定后，由 Workflow Manager Skill（`workflow-manager`）接管，实现 YAML 定义 + 自动 DAG 调度。
-
-**配套 Skill:**
-
-| Skill | 仓库 | 职责 |
-|-------|------|------|
-| **multi-agent-orchestrator** | `pxf0797/multi-agent-orchestrator-skill` | 单次编排：拆解→并行调度→汇总 |
-| **workflow-manager** | `pxf0797/workflow-manager-skill` | 多次编排：阶段链→状态传递→HITL门禁 |
-
-当用户需要执行多阶段项目时，优先推荐 workflow-manager：
-- 阶段间依赖自动管理 → 使用 `workflow-manager`
-- 单次复杂任务 → 使用本 skill 的 `/orchestrate`
+详见 [workflow-manager-skill](https://github.com/pxf0797/workflow-manager-skill)。
 
 ### Step 6: 结果汇总与统计摘要
 
@@ -833,7 +802,6 @@ fi
 | [quick-start.md](references/quick-start.md) | 快速入门：3 个完整示例 + 命令速查 |
 | [role-templates.md](references/role-templates.md) | 7 种角色模板（Architect/Developer/QA/Researcher/Writer/Reviewer/Verifier） |
 | [sop-templates.md](references/sop-templates.md) | 4 个领域 SOP（software-dev/research-report/code-review/deploy-verify） |
-| [pipeline-chaining.md](references/pipeline-chaining.md) | 多 Run 串联指南（短期路线图） |
 | [hitl-workflow.md](references/hitl-workflow.md) | 人机协作工作流（三种模式 + SOP 集成） |
 | [checkpoint-guide.md](references/checkpoint-guide.md) | 检查点系统（含增量检查点 Level 2） |
 | [code-dev-dag.md](references/code-dev-dag.md) | 代码开发 DAG 模板 |

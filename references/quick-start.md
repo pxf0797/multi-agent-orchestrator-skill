@@ -80,42 +80,34 @@
 
 ---
 
-## 示例 3: Pipeline 串联 — 三阶段项目
+## 示例 3: 代码审查 — 多维度安全检查
 
 **用户输入**:
 ```
-/orchestrate pipeline init my-project research design implement
+/orchestrate 对这个项目的代码进行全面审查：安全性、性能、可维护性
 ```
 
-第一阶段 — 研究:
-```
-/orchestrate 深入研究微服务框架选型，输出对比报告
+**Coordinator 内部流程**:
+
+1. **场景识别**: `code-review` SOP
+2. **拆解任务**:
+
+```json
+{
+  "plan": "项目代码全面审查",
+  "sop": "code-review",
+  "tasks": [
+    {"id": "1", "subject": "静态代码分析", "role": "reviewer", "model": "sonnet", "depends_on": []},
+    {"id": "2", "subject": "安全漏洞审查", "role": "reviewer", "model": "sonnet", "depends_on": []},
+    {"id": "3", "subject": "性能问题审查", "role": "reviewer", "model": "sonnet", "depends_on": []},
+    {"id": "4", "subject": "可维护性审查", "role": "reviewer", "model": "sonnet", "depends_on": []},
+    {"id": "5", "subject": "合成综合审查报告", "role": "reviewer", "model": "opus", "depends_on": ["1","2","3","4"]}
+  ]
+}
 ```
 
-第二阶段 — 设计（自动读取上游输出）:
-```
-/orchestrate 基于研究报告设计系统架构
-```
-
-第三阶段 — 实现:
-```
-/orchestrate 实现核心模块：服务注册、配置中心、API网关
-```
-
-**Pipeline 进度查看**:
-```
-/orchestrate pipeline status my-project
-
-Pipeline: my-project (pipeline-20260629-230000)
-Status: in_progress
-Current run: 3/3
-
-  ✅ Run 1: research — completed
-     Output: ~/.claude/orchestrator/pipelines/my-project/run-01-research/final-report.md
-  ✅ Run 2: design — completed
-     Output: ~/.claude/orchestrator/pipelines/my-project/run-02-design/architecture-design.md
-  🔄 Run 3: implement — in_progress
-```
+3. **DAG 执行**: T1/T2/T3/T4 并行审查 → T5 汇总报告(opus)
+4. **输出**: 结构化审查报告，含严重问题/建议改进/亮点
 
 ---
 
@@ -125,9 +117,6 @@ Current run: 3/3
 |------|------|
 | `/orchestrate <目标>` | 单次编排：拆解→调度→汇总 |
 | `/swarm <目标>` | 同 `/orchestrate`，语义偏向并行 |
-| `/orchestrate pipeline init <name> <runs...>` | 初始化多 Run 管线 |
-| `/orchestrate pipeline status <name>` | 查看管线进度 |
-| `/orchestrate pipeline resume` | 恢复最近中断的管线 |
 
 ## 自动触发关键词
 
@@ -137,7 +126,7 @@ Current run: 3/3
 
 ## 下一步
 
-- **多阶段项目**: 参考 [pipeline-chaining.md](pipeline-chaining.md) 了解手动串联
-- **自动化串联**: 使用 `workflow-manager` skill 实现 YAML 定义 + 自动调度
 - **角色配置**: 查看 [role-templates.md](role-templates.md) 了解 7 种角色定义
 - **流程定制**: 查看 [sop-templates.md](sop-templates.md) 了解 4 个领域 SOP
+- **人工审批**: 查看 [hitl-workflow.md](hitl-workflow.md) 了解 HITL 三种模式
+- **多阶段项目**: 使用 [workflow-manager](https://github.com/pxf0797/workflow-manager-skill) skill 串联多个 Orchestrator Run
