@@ -183,3 +183,61 @@ Agent 失败
 | `retry_count` | number | 当前任务已重试次数 |
 | `recovery_action` | `retry\|replan\|skip\|escalate\|null` | 采取的恢复动作 |
 
+## 增量检查点（Level 2 — 中期目标）
+
+当前 Level 1（任务级）恢复需要重跑整个未完成的任务。Level 2（子步骤级）允许从任务内部的中断点继续。
+
+### 子步骤快照格式
+
+每个 `incremental` 模式的任务在检查点中维护 `sub_steps` 数组：
+
+```json
+{
+  "claude_task_id": "5",
+  "subject": "T3: 实现JWT中间件",
+  "status": "in_progress",
+  "checkpoint_mode": "incremental",
+  "sub_steps": [
+    {"step_id": "3.1", "description": "分析JWT标准规范", "status": "completed", "output_summary": "确认使用RS256算法，token过期时间15分钟"},
+    {"step_id": "3.2", "description": "实现token签发逻辑", "status": "completed", "output_summary": "已完成sign()和verify()函数，包含错误处理"},
+    {"step_id": "3.3", "description": "实现中间件集成", "status": "in_progress", "output_summary": null},
+    {"step_id": "3.4", "description": "编写单元测试", "status": "pending", "output_summary": null}
+  ]
+}
+```
+
+### 恢复流程
+
+```
+1. 检测 in_progress 任务有 sub_steps
+2. 收集所有 completed 子步骤的 output_summary
+3. 构建恢复上下文:
+   [Resume Context]
+   以下子步骤已完成，请从最后一个未完成步骤继续:
+   - Step 3.1 (completed): 确认使用RS256算法...
+   - Step 3.2 (completed): 已完成sign()和verify()函数...
+   当前需完成: Step 3.3 — 实现中间件集成
+4. 重新 spawn Agent，注入恢复上下文 + 原始任务描述
+5. Agent 跳过已完成步骤，从断点继续
+```
+
+### 子步骤上报
+
+Agent 通过事件系统上报子步骤进度（见 SKILL.md §5.5）。Coordinator 在检查点更新时同步写入 `sub_steps` 数组。
+
+### Level 2 状态机
+
+```
+pending → in_progress (sub_steps 初始化)
+  → sub_step.N in_progress → completed (N递增)
+  → 所有 sub_steps completed → task status = completed
+  → 中断 → 恢复时读取 sub_steps，从断点继续
+```
+
+### 实现清单
+
+- [ ] `checkpoint_mode: "incremental"` 在任务创建时设置
+- [ ] Agent 在每个子步骤完成时上报 `task.substep` 事件
+- [ ] Coordinator 在收到 `task.substep` 事件时更新检查点 `sub_steps`
+- [ ] 恢复逻辑：读取 `sub_steps` → 构建 `[Resume Context]` → 注入 Agent prompt
+

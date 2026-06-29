@@ -1189,33 +1189,37 @@ DAG: 测试 → 性能基准 → [HITL Gate — Approval] → 部署
 
 ## 十、开发计划
 
-### 10.1 短期（1-2 周）：核心可用
+### 10.1 短期（1-2 周）：核心可用 ✅ **已完成 (2026-06-29)**
 
-| 任务 | 产出 | 优先级 |
-|---|---|---|
-| Skill 骨架 + Coordinator Prompt | `orchestrator.skill` 主文件 | P0 |
-| DAG 模板（3 种场景） | `templates/*.md` | P0 |
-| 直调 Agent 调度（默认模式） | Skill 调度逻辑 | P0 |
-| 基础检查点脚本（任务级，Full Checkpoint） | `scripts/checkpoint.sh` | P0 |
-| 环境检测 + Teams 禁用标记 | `scripts/env-detect.sh` | P0 |
-| Agent 提示词模板 | `prompts/*.md` | P1 |
-| 基础角色模板（Developer / Researcher / Writer） | `roles/*.md` | P1 |
-| 基础 SOP 模板（软件开发 / 研究报告） | `sops/*.md` | P1 |
+| 任务 | 产出 | 优先级 | 状态 |
+|---|---|---|---|
+| Skill 骨架 + Coordinator Prompt | `SKILL.md` 主文件 | P0 | ✅ |
+| DAG 模板（3 种场景） | `references/*-dag.md` | P0 | ✅ (code-dev + deep-research + general) |
+| 直调 Agent 调度（默认模式） | Skill 调度逻辑 | P0 | ✅ |
+| 基础检查点脚本（任务级，Full Checkpoint） | SKILL.md §4 + `references/checkpoint-guide.md` | P0 | ✅ |
+| 环境检测 + Teams 禁用标记 | SKILL.md §5.1 | P0 | ✅ |
+| Agent 提示词模板 | `templates/progress-injection.md` | P1 | ✅ |
+| 基础角色模板（全部 7 个角色） | `references/role-templates.md` | P1 | ✅ |
+| 基础 SOP 模板（4 个领域） | `references/sop-templates.md` | P1 | ✅ |
+| Pipeline 手动串联 | `references/pipeline-chaining.md` + `scripts/pipeline-*.sh` | P1 | ✅ |
+| HITL 工作流参考 | `references/hitl-workflow.md` | P1 | ✅ |
+| 快速入门指南 | `references/quick-start.md` | P1 | ✅ |
+| workflow-manager 集成 | SKILL.md §5.9 + `workflow-manager` skill | P1 | ✅ |
 
-**里程碑 M1**：Coordinator 可完成"接收复杂目标 → 拆解 → 并行调度 Agent → 汇总"的完整闭环，支持中断恢复。
+**里程碑 M1** ✅：Coordinator 可完成"接收复杂目标 → 拆解 → 并行调度 Agent → 汇总"的完整闭环，支持中断恢复。
 
-### 10.2 中期（1-2 月）：增强完善
+### 10.2 中期（1-2 月）：增强完善 🔄 **进行中**
 
-| 任务 | 产出 | 优先级 |
-|---|---|---|
-| 增量检查点 + 子步骤级恢复（Level 2） | 增强 `checkpoint.sh` | P0 |
-| HITL v1：关键阶段审批门 | Coordinator HITL 逻辑 | P0 |
-| 声明式依赖 DSL v1：JSON/YAML 结构化定义 | `dsl/dependency-dsl.md` | P1 |
-| 角色模板库完善（全部 6 个角色） | `roles/*.md` | P1 |
-| SOP 模板库完善（4 个领域 SOP） | `sops/*.md` | P1 |
-| 流式进度反馈 v1：检查点轮询 + 摘要展示 | Skill 进度报告逻辑 | P1 |
-| 端到端集成测试（3 个场景） | 测试脚本 | P0 |
-| HITL v2：三种模式（审批/输入/审阅） | 增强 HITL 逻辑 | P2 |
+| 任务 | 产出 | 优先级 | 状态 |
+|---|---|---|---|
+| 增量检查点 + 子步骤级恢复（Level 2） | `references/checkpoint-guide.md` §增量检查点 | P0 | ✅ 设计完成，待实现 |
+| HITL v1：关键阶段审批门 | `references/hitl-workflow.md` | P0 | ✅ |
+| 声明式依赖 DSL v1：JSON/YAML 结构化定义 | `dsl/dependency-dsl.md` | P1 | ⏳ |
+| 角色模板库完善（全部 7 个角色） | `references/role-templates.md` | P1 | ✅ |
+| SOP 模板库完善（4 个领域 SOP） | `references/sop-templates.md` | P1 | ✅ |
+| 流式进度反馈 v1：检查点轮询 + 摘要展示 | `templates/progress-injection.md` + SKILL.md §5.5 | P1 | ✅ |
+| 端到端集成测试（3 个场景） | 测试脚本 | P0 | ⏳ |
+| HITL v2：三种模式（审批/输入/审阅） | `references/hitl-workflow.md` | P2 | ✅ |
 
 **里程碑 M2**：具备完整的角色模板、SOP 模板、HITL 审批、增量检查点恢复能力，任务可靠性显著提升。
 

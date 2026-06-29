@@ -714,7 +714,18 @@ Orchestrator Run 1 → 输出文件 + pipeline-state.json
 3. 每个 Run 完成后 Coordinator 更新 pipeline-state.json
 4. 全部完成 → 生成管线总结报告
 
-**向中期演进：** 手动串联模式稳定后，由 Workflow Manager Skill（`workflow-manager`）接管，实现 YAML 定义 + 自动 DAG 调度。详见研究路线图。
+**向中期演进：** 手动串联模式稳定后，由 Workflow Manager Skill（`workflow-manager`）接管，实现 YAML 定义 + 自动 DAG 调度。
+
+**配套 Skill:**
+
+| Skill | 仓库 | 职责 |
+|-------|------|------|
+| **multi-agent-orchestrator** | `pxf0797/multi-agent-orchestrator-skill` | 单次编排：拆解→并行调度→汇总 |
+| **workflow-manager** | `pxf0797/workflow-manager-skill` | 多次编排：阶段链→状态传递→HITL门禁 |
+
+当用户需要执行多阶段项目时，优先推荐 workflow-manager：
+- 阶段间依赖自动管理 → 使用 `workflow-manager`
+- 单次复杂任务 → 使用本 skill 的 `/orchestrate`
 
 ### Step 6: 结果汇总与统计摘要
 
@@ -814,6 +825,21 @@ fi
 ```
 
 用户选择恢复 → 读取检查点 → 跳过已完成任务 → 继续执行未完成任务。
+
+## 参考文档
+
+| 文档 | 内容 |
+|------|------|
+| [quick-start.md](references/quick-start.md) | 快速入门：3 个完整示例 + 命令速查 |
+| [role-templates.md](references/role-templates.md) | 7 种角色模板（Architect/Developer/QA/Researcher/Writer/Reviewer/Verifier） |
+| [sop-templates.md](references/sop-templates.md) | 4 个领域 SOP（software-dev/research-report/code-review/deploy-verify） |
+| [pipeline-chaining.md](references/pipeline-chaining.md) | 多 Run 串联指南（短期路线图） |
+| [hitl-workflow.md](references/hitl-workflow.md) | 人机协作工作流（三种模式 + SOP 集成） |
+| [checkpoint-guide.md](references/checkpoint-guide.md) | 检查点系统（含增量检查点 Level 2） |
+| [code-dev-dag.md](references/code-dev-dag.md) | 代码开发 DAG 模板 |
+| [deep-research-dag.md](references/deep-research-dag.md) | 深度研究 DAG 模板 |
+| [general-dag.md](references/general-dag.md) | 通用 DAG 模板 |
+| [design.md](design.md) | 完整架构设计文档 |
 
 ## 使用方式
 
