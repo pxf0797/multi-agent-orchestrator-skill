@@ -807,6 +807,7 @@ fi
 | [code-dev-dag.md](references/code-dev-dag.md) | 代码开发 DAG 模板 |
 | [deep-research-dag.md](references/deep-research-dag.md) | 深度研究 DAG 模板 |
 | [general-dag.md](references/general-dag.md) | 通用 DAG 模板 |
+| [dependency-dsl.md](references/dependency-dsl.md) | 声明式 DSL 语法参考 |
 | [design.md](design.md) | 完整架构设计文档 |
 
 ## 使用方式
