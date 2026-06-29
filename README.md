@@ -24,7 +24,7 @@ User: "Research X, build Y, compare Z"
 1. **Scene Recognition** — identifies `code_dev`, `deep_research`, or `general` tasks
 2. **Task Decomposition** — breaks goals into 2-10 single-responsibility subtasks
 3. **DAG Generation** — creates dependency graph with `blockedBy`
-4. **Parallel Dispatch** — launches agents concurrently (max 4)
+4. **Parallel Dispatch** — launches agents concurrently (max 10)
 5. **Result Aggregation** — merges, deduplicates, and presents structured output
 
 ## Key Features

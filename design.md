@@ -129,7 +129,7 @@ Step 3: 生成 DAG
 
 Step 4: 调度执行
    ├── 识别所有 blockedBy 为空的就绪任务
-   ├── 并行 spawn Agent（max 4 并发）
+   ├── 并行 spawn Agent（max 10 并发）
    ├── 每个 Agent 完成 → TaskUpdate(status: completed) → 解锁下游任务
    └── 循环直到所有任务完成或失败
 
@@ -225,7 +225,7 @@ Coordinator 动态分析任务依赖，不套用固定模板。原则：
 
 - **无依赖 → 并行**：能同时跑的绝不串行
 - **有依赖 → blockedBy**：上游完成才触发下游
-- **最大并行度 4**：避免 API 速率限制
+- **最大并行度 10**：避免 API 速率限制
 
 ---
 
@@ -296,7 +296,7 @@ Teams 禁用标记: ~/.claude/orchestrator/teams_disabled
 
 | 参数 | 值 | 说明 |
 |---|---|---|
-| 最大并行 Agent | 4 | 避免 API 速率限制 |
+| 最大并行 Agent | 10 | 避免 API 速率限制 |
 | Agent 超时 | 600s | 单个 Agent 最长执行时间 |
 | 重试次数 | 1 | 失败后自动重试一次 |
 
@@ -985,7 +985,7 @@ sop:
 | 阶段 | 角色 | 并行度 | 输出 | HITL |
 |---|---|---|---|---|
 | 1. 需求分析与拆解 | Architect | 1 | 模块划分方案 | yes |
-| 2. 并行模块开发 | Developer | max(4) | 各模块代码+测试 | no |
+| 2. 并行模块开发 | Developer | max(10) | 各模块代码+测试 | no |
 | 3. 依赖模块开发 | Developer | partial | 依赖模块代码 | no |
 | 4. 集成测试 | QA | 1 | 测试报告 | yes |
 | 5. 代码审查 | Reviewer | 1 | 审查报告 | no |
@@ -995,7 +995,7 @@ sop:
 | 阶段 | 角色 | 并行度 | 输出 | HITL |
 |---|---|---|---|---|
 | 1. 课题拆解 | Researcher | 1 | 搜索维度列表 | yes |
-| 2. 并行信息搜集 | Researcher | max(4) | 各维度原始资料 | no |
+| 2. 并行信息搜集 | Researcher | max(10) | 各维度原始资料 | no |
 | 3. 分类整理 | Writer | max(3) | 分类整理稿 | no |
 | 4. 报告合成 | Writer | 1 | 完整报告 | yes |
 | 5. 质量审核 | Reviewer | 1 | 审核意见 | no |
@@ -1016,7 +1016,7 @@ sop:
 | 阶段 | 角色 | 并行度 | 输出 | HITL |
 |---|---|---|---|---|
 | 1. 环境检查 | QA | 1 | 环境检查报告 | no |
-| 2. 并行功能验证 | QA | max(4) | 各功能验证结果 | no |
+| 2. 并行功能验证 | QA | max(10) | 各功能验证结果 | no |
 | 3. 性能基准测试 | QA | 1 | 性能报告 | no |
 | 4. 部署决策 | Coordinator | 1 | 上线/回滚建议 | yes |
 
@@ -1181,7 +1181,7 @@ DAG: 测试 → 性能基准 → [HITL Gate — Approval] → 部署
 | Teams fire-and-forget 不可靠 | Workers 仅发 idle_notification，不回传结果 | 直调 Agent 为默认模式，Teams 仅用于双向交互场景 |
 | 无云端 Session Store | 检查点仅本地可用 | 归档到 iCloud 目录 |
 | 文件级持久化（非 Redis） | 恢复粒度粗（任务级，非事件级） | 增量检查点将粒度提升至子步骤级（Level 2） |
-| API 速率限制 | 过多并行 Agent 可能触发限流 | 最大并行度 4 |
+| API 速率限制 | 过多并行 Agent 可能触发限流 | 最大并行度 10 |
 | 执行进度不透明 | 用户无法实时感知 Agent 进度 | 中期规划流式进度反馈（借鉴 LangGraph 7 种流模式） |
 | 无加密持久化 | 检查点明文存储，敏感信息可能泄露 | 远期规划 AES 加密（借鉴 LangGraph DeltaChannel） |
 
