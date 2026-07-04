@@ -1,6 +1,6 @@
 ---
 name: multi-agent-orchestrator
-description: Multi-Agent Orchestrator — 复杂任务的协调者。自动拆解目标为子任务、生成 DAG 依赖图、并行调度 Agent、汇总结果。触发场景：用户要求并行处理、多 Agent 协作、复杂多步骤任务、使用 /orchestrate 或 /swarm 命令。支持代码开发、深度研究、通用任务三种场景。
+description: Multi-Agent Orchestrator — 复杂任务的协调者。自动拆解目标为子任务、生成 DAG 依赖图、并行调度 Agent、汇总结果。触发场景：用户要求并行处理、多 Agent 协作、复杂多步骤任务、使用 /orchestrate 或 /swarm 命令。支持代码开发、深度研究、部署验证、通用任务四种场景。
 ---
 
 # Multi-Agent Orchestrator
@@ -26,6 +26,7 @@ description: Multi-Agent Orchestrator — 复杂任务的协调者。自动拆�
 |---|---|---|
 | `code_dev` | 实现/开发/重构/写代码/修bug/修复/添加功能/写测试 | 并行开发 → 集成 → Review |
 | `deep_research` | 研究/调查/分析/报告/对比/总结/侦查/scout/调研/深入 | 并行搜索 → 并行写作 → 汇总 |
+| `deploy_verify` | 部署/上线/发布/验证/灰度 | 环境检查 → 并行验证 → 部署决策 |
 | `general` | 不匹配上述 | 动态推断依赖关系 |
 
 场景识别后，加载对应的领域 SOP 模板作为流程骨架（完整定义见 `references/sop-templates.md`）：
@@ -34,6 +35,7 @@ description: Multi-Agent Orchestrator — 复杂任务的协调者。自动拆�
 |------|---------|--------------------------------|
 | `code_dev` | 软件开发 SOP | 0.方案自审查(Coordinator) → 1.需求分析与架构设计(Architect) → 2.并行模块开发(Developer×N) → 3.质量验证(Verifier) → 4.集成测试(QA) → 5.代码审查(Reviewer) |
 | `deep_research` | 研究报告 SOP | 0.研究简报(Coordinator) → 1.课题拆解(Coordinator) → 2.并行搜索(Researcher×N) → 3.分类整理(Writer×N) → 4.报告合成(Writer) → 5.质量验证(Verifier) |
+| `deploy_verify` | 部署验证 SOP | 1.环境检查(QA) → 2.并行功能验证(QA×N) → 3.性能基准测试(QA) → 4.部署决策(Coordinator) |
 | `general` | 动态推断 | 预估≥3子任务时执行轻量方案阶段(§1.5C)，否则直接拆解 |
 
 SOP 使用方式：
@@ -53,6 +55,7 @@ SOP 使用方式：
 |------|---------|------|
 | `code_dev` | **完整版** (§A) | 方案生成 → 自审查 → 问题修正 → 歧义澄清 → 方案确认 |
 | `deep_research` | **轻量版** (§B) | 需求理解复述 → 歧义澄清（跳过自审查循环） |
+| `deploy_verify` | **跳过** | 验证场景是对照检查，不需要前置方案设计 |
 | `general` | **可选** (§C) | Coordinator 判断：预估子任务 ≥3 时执行轻量版，否则跳过 |
 
 #### ID 预分配（所有场景，本阶段开始前执行）
@@ -281,6 +284,11 @@ Coordinator 基于需求复杂度做快速心智评估（非正式拆解，只�
 ```
 研究简报和课题拆解阶段不创建 Agent Task，由 Coordinator 内部完成。
 
+**部署验证 DAG 模板**（详见 `references/sop-templates.md` SOP 4）：
+```
+环境检查(QA) → 并行功能验证(QA×N: 核心路径/边界条件/异常场景/回归测试) → 性能基准测试(QA) → 部署决策(Coordinator, HITL)
+```
+
 **通用 DAG**（详见 `references/general-dag.md`）：动态分析依赖，原则 — 无依赖=并行，有依赖=blockedBy
 
 **JSON 结构化任务定义：**
@@ -349,7 +357,7 @@ ls -d ~/.claude/orchestrator/output/${ORCH_ID}
   "created_at": "ISO时间戳",
   "updated_at": "ISO时间戳",
   "status": "in_progress|completed|failed",
-  "scenario": "code_dev|deep_research|general",
+  "scenario": "code_dev|deep_research|deploy_verify|general",
   "goal": "用户原始输入",
   "checkpoint_mode": "full|incremental",
   "tasks": [
@@ -788,6 +796,8 @@ Agent 输出 → Verify Gate:
 | `code_dev` | 集成测试完成后 → Code Review 前 | Strict | 集成产物 |
 | `deep_research` | 每个维度写作完成后 | Light | 写作 Agent 输出 |
 | `deep_research` | 汇总报告完成后 → 交付前 | Standard | 最终报告 |
+| `deploy_verify` | 并行功能验证完成后 → 性能测试前 | Light | 各功能验证结果 |
+| `deploy_verify` | 性能基准测试完成后 → 部署决策前 | Standard | 性能报告 |
 | `general` | Coordinator 根据风险自行判断 | 动态 | 动态 |
 
 **事件集成：** Verify Gate 判定结果通过 `task.substep` 事件上报，step_id 格式为 `verify-<N>`。
@@ -963,6 +973,7 @@ echo "📄 最终报告已保存: ./${DELIVERABLE_NAME}"
 |------|---------|------|
 | `deep_research` | `{研究主题}-研究报告.md` | `Claude-Code-vs-Cursor-Agent能力对比报告.md` |
 | `code_dev` | `{项目名}-开发总结.md` | `用户认证系统-开发总结.md` |
+| `deploy_verify` | `{系统名}-部署验证报告.md` | `订单系统-部署验证报告.md` |
 | `general` | `{任务摘要}.md` | `NoneType-Bug根因分析报告.md` |
 
 如果最终产物包含多个文件（如代码 + 报告），在工作目录下创建以项目名命名的子目录存放。
