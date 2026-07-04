@@ -243,10 +243,11 @@ Coordinator 用自己的话复述用户的研究问题，写入 `~/.claude/orche
 
 **判断启发式：**
 ```
-预估子任务数:
-  ├── ≤2 → 跳过方案阶段，直接进入 Step 2
-  └── ≥3 → 执行轻量版（与 §B deep_research 相同：需求理解复述 + 歧义澄清）
-           写入 ~/.claude/orchestrator/output/${ORCH_ID}/task-brief.md
+Coordinator 基于需求复杂度做快速心智评估（非正式拆解，只判断规模）：
+  预估子任务数:
+    ├── ≤2 → 跳过方案阶段，直接进入 Step 2
+    └── ≥3 → 执行轻量版（与 §B deep_research 相同：需求理解复述 + 歧义澄清）
+             写入 ~/.claude/orchestrator/output/${ORCH_ID}/task-brief.md
 ```
 
 **进度报告格式：**
@@ -276,8 +277,9 @@ Coordinator 用自己的话复述用户的研究问题，写入 `~/.claude/orche
 
 **深度研究 DAG 模板**（详见 `references/deep-research-dag.md`）：
 ```
-并行搜索(T1...Tn) → 搜索验证(Light) → 并行写作(Tn+1...Tm) → 写作验证(Light) → 汇总报告(Tm+1) → 报告验证(Standard)
+研究简报(Coordinator, §1.5B) → 课题拆解(Coordinator) → 并行搜索(T1...Tn) → 搜索验证(Light) → 并行写作(Tn+1...Tm) → 写作验证(Light) → 汇总报告(Tm+1) → 报告验证(Standard)
 ```
+研究简报和课题拆解阶段不创建 Agent Task，由 Coordinator 内部完成。
 
 **通用 DAG**（详见 `references/general-dag.md`）：动态分析依赖，原则 — 无依赖=并行，有依赖=blockedBy
 
@@ -659,7 +661,9 @@ Agent (后台子进程)
 │   └── <orch-id>.seq              ← Coordinator消费者游标（记录已消费的 JSONL 行号）
 ├── output/
 │   └── <orch-id>/                 ← 每个编排独立的输出子目录（**多窗口安全**）
-│       ├── initial-plan.md        ← Coordinator 方案自审查输出（code_dev 场景）
+│       ├── initial-plan.md        ← Coordinator 方案自审查输出（code_dev）
+│       ├── research-brief.md      ← Coordinator 研究简报（deep_research）
+│       ├── task-brief.md          ← Coordinator 任务简报（general, 可选）
 │       ├── architecture-design.md ← Architect Agent 架构方案
 │       ├── search-<dim>.md        ← Researcher Agent 原始搜索结果
 │       ├── write-<dim>.md         ← Writer Agent 整理报告
