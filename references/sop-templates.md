@@ -17,6 +17,8 @@ SOP 实例化为具体 DAG（根据用户目标填充参数，"这次具体做�
 DAG 调度执行
 ```
 
+> **HITL 列符号说明：** `yes` = 标准检查点 HITL gate（在调度循环阶段1处理）；`inline` = Coordinator 内联交互（不经过检查点系统，由 Coordinator 直接用 `AskUserQuestion` 等工具与用户交互，适用于检查点创建前的早期阶段）；`no` = 无人工交互。
+
 ---
 
 ## SOP 1: 软件开发 (software-dev)
@@ -26,7 +28,7 @@ DAG 调度执行
 
 | 阶段 | 角色 | 并行度 | 输出 | HITL | 验证 |
 |------|------|--------|------|------|------|
-| 0. 方案设计与自审查 | Coordinator | 1 | 初步方案(initial-plan.md) | yes(歧义时) | — |
+| 0. 方案设计与自审查 | Coordinator | 1 | 初步方案(initial-plan.md) | inline(歧义时) | — |
 | 1. 需求分析与架构设计 | Architect | 1 | 模块划分方案、接口契约 | yes | — |
 | 2. 并行模块开发 | Developer | max(10) | 各模块代码+测试 | no | Standard |
 | 3. 集成测试 | QA | 1 | 集成测试报告 | yes | Strict |
@@ -68,8 +70,8 @@ DAG 调度执行
 
 | 阶段 | 角色 | 并行度 | 输出 | HITL | 验证 |
 |------|------|--------|------|------|------|
-| 0. 研究简报 | Coordinator | 1 | 研究简报(research-brief.md) | yes(歧义时) | — |
-| 1. 课题拆解 | Researcher | 1 | 搜索维度列表 | yes | — |
+| 0. 研究简报 | Coordinator | 1 | 研究简报(research-brief.md) | inline(歧义时) | — |
+| 1. 课题拆解 | Coordinator | 1 | 搜索维度列表 | yes | — |
 | 2. 并行信息搜集 | Researcher | max(5) | 各维度原始资料 | no | Light |
 | 3. 分类整理 | Writer | max(3) | 分类整理稿 | no | Light |
 | 4. 报告合成 | Writer | 1 | 完整报告 | yes | Standard |

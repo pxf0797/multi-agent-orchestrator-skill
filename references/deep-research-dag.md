@@ -161,6 +161,13 @@
 ### 输入
 "深入研究一下 Claude Code 和 Cursor 在 Agent 能力上的差异，出一个对比报告"
 
+### 前置阶段：研究简报
+
+Coordinator 先执行 §1.5B 轻量方案阶段：
+1. 生成 research-brief.md（核心问题: Claude Code vs Cursor Agent 能力对比、拆解维度: 架构/工具链/性能/生态）
+2. 歧义检查: "Agent 能力"具体指什么？代码生成？工具调用？多步骤推理？→ 若用户未指定，触发歧义澄清
+3. 简报确认后进入课题拆解
+
 ### 拆解结果
 
 | Task ID | 子任务 | blockedBy | criticality | Agent 类型 |

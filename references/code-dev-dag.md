@@ -13,7 +13,7 @@
   │
   ▼
 ┌─────────────────────────┐
-│ 1.5a 方案生成            │  Coordinator 生成 initial-plan.md
+│ A.1 方案生成             │  Coordinator 生成 initial-plan.md
 │ - 需求理解               │  （需求复述 + 变更分析 + 技术方案 + 风险）
 │ - 变更分析               │
 │ - 技术方案               │
@@ -22,10 +22,10 @@
             │
             ▼
 ┌─────────────────────────┐
-│ 1.5b 自审查              │  逐项检查：覆盖度/一致性/可行性/简洁性/安全
-│ - 发现问题? → 1.5c 修正  │
-│ - 有歧义?  → 1.5d 澄清  │
-│ - 通过    → 1.5e 确认   │
+│ A.2 自审查               │  逐项检查：覆盖度/一致性/可行性/简洁性/安全
+│ - 发现问题? → A.3 修正   │
+│ - 有歧义?  → A.4 澄清   │
+│ - 通过    → A.5 确认    │
 └───────────┬─────────────┘
             │ 方案确认
             ▼
@@ -39,13 +39,19 @@
 
 ```
               ┌──────────────┐
-              │  Coordinator  │  拆解开发需求为独立模块
+              │  Coordinator  │  方案自审查 → 拆解需求
+              └──────┬───────┘
+                     │
+                     ▼
+              ┌──────────────┐
+              │   Architect   │  架构设计、接口契约定义
+              │  (T_arch)     │
               └──────┬───────┘
                      │
        ┌─────────────┼─────────────┐
        ▼             ▼             ▼
 ┌───────────┐ ┌───────────┐ ┌───────────┐
-│  模块 A    │ │  模块 B    │ │  模块 C    │  ← 并行开发（无依赖）
+│  模块 A    │ │  模块 B    │ │  模块 C    │  ← 并行开发（blockedBy: T_arch）
 │(Developer) │ │(Developer) │ │(Developer) │
 └─────┬─────┘ └─────┬─────┘ └─────┬─────┘
       │              │              │
@@ -240,10 +246,11 @@ Coordinator 先执行 §1.5 方案设计与自审查：
 
 | Task ID | 子任务 | blockedBy | criticality | Agent 类型 |
 |---|---|---|---|---|---|
-| T1 | 实现注册模块（/api/register） | [] | critical | general-purpose |
-| T2 | 实现登录模块（/api/login） | [] | critical | general-purpose |
-| T3 | 实现 JWT 中间件 | [] | critical | general-purpose |
-| T4 | 实现密码重置（/api/reset-password） | [T2] | critical | general-purpose |
+| T_arch | 架构设计：模块划分+接口契约 | [] | critical | general-purpose |
+| T1 | 实现注册模块（/api/register） | [T_arch] | critical | general-purpose |
+| T2 | 实现登录模块（/api/login） | [T_arch] | critical | general-purpose |
+| T3 | 实现 JWT 中间件 | [T_arch] | critical | general-purpose |
+| T4 | 实现密码重置（/api/reset-password） | [T2, T_arch] | critical | general-purpose |
 | T5 | Verify: 注册模块 (Standard) | [T1] | normal | general-purpose |
 | T6 | Verify: 登录模块 (Standard) | [T2] | normal | general-purpose |
 | T7 | Verify: JWT 中间件 (Standard) | [T3] | normal | general-purpose |
@@ -252,4 +259,4 @@ Coordinator 先执行 §1.5 方案设计与自审查：
 | T10 | Verify: 集成验证 (Strict) | [T9] | critical | general-purpose |
 | T11 | Code Review | [T10] | optional | code-reviewer |
 
-T1/T2/T3 并行 → T4 等待 T2 → T5-8 并行验证 → T9 集成 → T10 严格验证 → T11
+T_arch 架构设计 → T1/T2/T3 并行 + T4 等待 T2 → T5-8 并行验证 → T9 集成 → T10 严格验证 → T11
