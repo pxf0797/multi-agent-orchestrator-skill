@@ -64,19 +64,23 @@ DAG 调度执行
 ## SOP 2: 研究报告 (research-report)
 
 **触发**: `deep_research` 场景
-**描述**: 从课题拆解到最终报告的多维度深度研究
+**描述**: 从课题拆解到最终报告的多维度深度研究。在课题拆解前新增**轻量方案阶段**（Coordinator 内部），仅做需求理解复述和歧义澄清，不做自审查循环。
 
 | 阶段 | 角色 | 并行度 | 输出 | HITL | 验证 |
 |------|------|--------|------|------|------|
+| 0. 研究简报 | Coordinator | 1 | 研究简报(research-brief.md) | yes(歧义时) | — |
 | 1. 课题拆解 | Researcher | 1 | 搜索维度列表 | yes | — |
 | 2. 并行信息搜集 | Researcher | max(5) | 各维度原始资料 | no | Light |
 | 3. 分类整理 | Writer | max(3) | 分类整理稿 | no | Light |
 | 4. 报告合成 | Writer | 1 | 完整报告 | yes | Standard |
 | 5. 质量审核 | Verifier | 1 | 审核意见 | no | — |
 
+**Phase 0 说明：** Coordinator 先做需求理解复述（核心问题/拆解维度/范围边界/不确定项），确认对研究方向的理解无误后再进入课题拆解。研究天然是探索性的，因此跳过自审查循环。详见 skill.md §1.5B。
+
 **DAG 流程:**
 ```
-课题拆解(Coordinator) → [HITL: 研究方向确认]
+研究简报(Coordinator) → [HITL: 歧义澄清(仅在歧义时触发)]
+  → 课题拆解(Coordinator) → [HITL: 研究方向确认]
   → 并行搜索(Researcher×N) → 搜索验证(Verifier, Light)
   → 并行写作(Writer×N) → 写作验证(Verifier×N, Light)
   → 汇总报告(Writer) → 报告验证(Verifier, Standard)

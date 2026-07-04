@@ -33,8 +33,8 @@ description: Multi-Agent Orchestrator — 复杂任务的协调者。自动拆�
 | 场景 | SOP 模板 | 标准阶段（每个阶段可含多个Task） |
 |------|---------|--------------------------------|
 | `code_dev` | 软件开发 SOP | 0.方案自审查(Coordinator) → 1.需求分析与架构设计(Architect) → 2.并行模块开发(Developer×N) → 3.质量验证(Verifier) → 4.集成测试(QA) → 5.代码审查(Reviewer) |
-| `deep_research` | 研究报告 SOP | 1.课题拆解(Coordinator) → 2.并行搜索(Researcher×N) → 3.分类整理(Writer×N) → 4.报告合成(Writer) → 5.质量验证(Verifier) |
-| `general` | 动态推断 | Coordinator 根据目标自行设计阶段划分 |
+| `deep_research` | 研究报告 SOP | 0.研究简报(Coordinator) → 1.课题拆解(Coordinator) → 2.并行搜索(Researcher×N) → 3.分类整理(Writer×N) → 4.报告合成(Writer) → 5.质量验证(Verifier) |
+| `general` | 动态推断 | 预估≥3子任务时执行轻量方案阶段(§1.5C)，否则直接拆解 |
 
 SOP 使用方式：
 - SOP 定义"这个领域通常怎么做"，提供流程骨架
@@ -43,15 +43,38 @@ SOP 使用方式：
 - SOP 阶段间的依赖关系自动转化为 Task blockedBy 链
 - Coordinator 阶段由编排者内部完成，不创建独立 Agent Task
 
-### Step 1.5: 方案设计与自审查（code_dev 场景）
+### Step 1.5: 方案设计与自审查
 
-> **触发条件：** 仅当场景识别为 `code_dev` 时执行本阶段。`deep_research` 和 `general` 场景跳过，直接进入 Step 2。
->
 > **执行者：** Coordinator 内部完成，不创建 Agent Task。本阶段目标是**在派发昂贵的 Agent 任务之前，用最少 Token 把方案想清楚**。
 
-#### 1.5a 方案生成
+**场景分发：**
 
-Coordinator 根据用户需求，生成初步方案并写入 `~/.claude/orchestrator/output/<orch-id>/initial-plan.md`：
+| 场景 | 执行版本 | 内容 |
+|------|---------|------|
+| `code_dev` | **完整版** (§A) | 方案生成 → 自审查 → 问题修正 → 歧义澄清 → 方案确认 |
+| `deep_research` | **轻量版** (§B) | 需求理解复述 → 歧义澄清（跳过自审查循环） |
+| `general` | **可选** (§C) | Coordinator 判断：预估子任务 ≥3 时执行轻量版，否则跳过 |
+
+#### ID 预分配（所有场景，本阶段开始前执行）
+
+> **注意：** 原 Step 4.0 的 ID 生成逻辑**提前到此处**。后续 Step 4.0 跳过 `mkdir` 和 ID 生成，直接使用已分配的 `$ORCH_ID`。
+
+```bash
+ORCH_ID="orch-$(date +%Y%m%d-%H%M%S)-$$"
+COORDINATOR_PID=$$
+mkdir -p ~/.claude/orchestrator/output/${ORCH_ID}
+mkdir -p ~/.claude/orchestrator/events
+mkdir -p ~/.claude/orchestrator/seq_tracker
+echo $COORDINATOR_PID > ~/.claude/orchestrator/checkpoints/${ORCH_ID}.pid
+```
+
+---
+
+### A. code_dev — 完整版
+
+#### A.1 方案生成
+
+Coordinator 根据用户需求，生成初步方案并写入 `~/.claude/orchestrator/output/${ORCH_ID}/initial-plan.md`：
 
 ```markdown
 # 方案设计
@@ -85,7 +108,7 @@ Coordinator 根据用户需求，生成初步方案并写入 `~/.claude/orchestr
 - 假设清单（假设了什么前提，标注置信度）
 ```
 
-#### 1.5b 自审查（Self-Review）
+#### A.2 自审查（Self-Review）
 
 Coordinator 对方案执行自审查，逐项检查：
 
@@ -99,7 +122,7 @@ Coordinator 对方案执行自审查，逐项检查：
 □ 安全性 — 是否有明显的安全隐患（注入/凭证泄露/权限）？
 ```
 
-#### 1.5c 问题修正循环
+#### A.3 问题修正循环
 
 若自审查发现问题：
 
@@ -108,23 +131,25 @@ Coordinator 对方案执行自审查，逐项检查：
   │
   ├── 问题明确且可自行修正
   │     → 更新 initial-plan.md，同步更新受影响的方案章节
-  │     → 回到 1.5b 重新审查（最多 2 轮）
+  │     → 回到 A.2 重新审查（最多 2 轮）
   │     → 第 2 轮仍有问题 → 如实记录到方案的"遗留问题"段，不阻塞流程
   │
   └── 问题涉及需求理解歧义
-        → 进入 1.5d 歧义处理
+        → 进入 A.4 歧义处理
 ```
 
 **进度报告格式：**
 ```
-方案修正: "[orch-<id>] 🔧 方案自审查发现 <N> 个问题，第 <X>/2 轮修正"
-修正完成: "[orch-<id>] ✅ 方案自审查通过 (审查轮次: <N>)"
-遗留问题: "[orch-<id>] ⚠️ 方案有 <N> 个遗留问题，已记录到 initial-plan.md，继续执行"
+方案修正: "[orch-${ORCH_ID}] 🔧 方案自审查发现 <N> 个问题，第 <X>/2 轮修正"
+修正完成: "[orch-${ORCH_ID}] ✅ 方案自审查通过 (审查轮次: <N>)"
+遗留问题: "[orch-${ORCH_ID}] ⚠️ 方案有 <N> 个遗留问题，已记录到 initial-plan.md，继续执行"
 ```
 
-#### 1.5d 歧义处理
+#### A.4 歧义处理
 
-当 Coordinator 对需求存在**多种合理解读**时，触发 HITL input gate：
+当 Coordinator 对需求存在**多种合理解读**时，暂停并请用户澄清。
+
+> **实现方式：** 此阶段尚未创建检查点文件（检查点在 Step 4 创建），因此歧义处理不经过标准 HITL 管线。Coordinator 通过 `AskUserQuestion` 直接与用户交互，下面的 JSON 仅作文档参考格式。
 
 ```
 歧义触发条件（满足任一即触发）：
@@ -133,31 +158,31 @@ Coordinator 对方案执行自审查，逐项检查：
 - 需求之间存在潜在矛盾（如："高性能" + "全量同步"）
 - 用户使用了模糊词汇（"优化"/"改进"/"完善" 等没有具体指标）
 
-触发 HITL input gate:
+歧义处理流程:
   → 展示: 歧义点列表 + 每种解读的方案差异 + 推荐选项
   → 等待用户选择或给出新描述
-  → 根据反馈更新方案
-  → 回到 1.5b 重新审查
+  → 根据反馈更新 initial-plan.md
+  → 回到 A.2 重新审查
 ```
 
-**HITL gate 配置：**
+**交互参考格式（非检查点 HITL）：**
 ```json
 {
-  "gate_id": "plan-ambiguity",
-  "after_task": null,
-  "mode": "input",
-  "question": "方案存在以下歧义，请选择或补充描述：\n1. <歧义点1>: 选项A / 选项B\n2. <歧义点2>: ...",
-  "timeout": 3600
+  "type": "plan_ambiguity",
+  "questions": [
+    {"point": "<歧义点1>", "options": ["选项A: ...", "选项B: ..."], "recommended": "A"},
+    {"point": "<歧义点2>", "options": ["选项X: ...", "选项Y: ..."], "recommended": "X"}
+  ]
 }
 ```
 
 **进度报告格式：**
 ```
-歧义触发: "[orch-<id>] ❓ 方案存在 <N> 个歧义点，等待用户澄清"
-歧义解决: "[orch-<id>] ✅ 歧义已澄清，方案已更新"
+歧义触发: "[orch-${ORCH_ID}] ❓ 方案存在 <N> 个歧义点，等待用户澄清"
+歧义解决: "[orch-${ORCH_ID}] ✅ 歧义已澄清，方案已更新"
 ```
 
-#### 1.5e 方案确认与衔接
+#### A.5 方案确认与衔接
 
 方案自审查通过后：
 1. 标记 `initial-plan.md` 状态为 `confirmed`
@@ -167,12 +192,67 @@ Coordinator 对方案执行自审查，逐项检查：
 
 **事件上报：**
 ```json
-{"event":"orchestrator.phase","orch_id":"<id>","data":{"phase":"plan_review","status":"completed","rounds":<N>,"ambiguities_resolved":<N>}}
+{"event":"orchestrator.phase","orch_id":"${ORCH_ID}","data":{"phase":"plan_review","status":"completed","rounds":<N>,"ambiguities_resolved":<N>}}
 ```
 
 **进度报告格式：**
 ```
-方案确认: "[orch-<id>] 📋 方案已确认 (自审查 <N> 轮, 解决歧义 <M> 个) → 进入任务拆解"
+方案确认: "[orch-${ORCH_ID}] 📋 方案已确认 (自审查 <N> 轮, 解决歧义 <M> 个) → 进入任务拆解"
+```
+
+---
+
+### B. deep_research — 轻量版
+
+> **设计理由：** 研究天然是探索性的——搜索过程中会发现新维度，过度前置规划可能限制发现。但需求理解复述 + 歧义澄清成本极低，能暴露理解偏差、节省搜索 Token。因此跳过自审查循环（§A.2/A.3），只保留最核心的两步。
+
+#### B.1 需求理解复述
+
+Coordinator 用自己的话复述用户的研究问题，写入 `~/.claude/orchestrator/output/${ORCH_ID}/research-brief.md`：
+
+```markdown
+# 研究简报
+
+## 1. 核心问题（一句话）
+## 2. 拆解维度（打算从哪几个角度研究）
+## 3. 范围边界（明确不研究什么）
+## 4. 不确定项（标注哪些理解可能不准确）
+```
+
+> **与课题拆解的区别：** 课题拆解（SOP Phase 1）侧重"拆成哪几个维度去搜"；研究简报侧重"我对问题的理解对不对"。两者互补——简报先确认方向，拆解再细化维度。
+
+#### B.2 歧义澄清
+
+与 §A.4 相同的歧义触发条件和交互方式。研究场景的额外触发条件：
+- 问题范围过于宽泛（如"研究一下 AI"——哪方面？）
+- 缺少时间范围（"最新"是最近一个月还是一年？）
+- 缺少深度要求（概览 vs 深度分析，Token 消耗差 10 倍）
+
+**进度报告格式：**
+```
+研究简报: "[orch-${ORCH_ID}] 📝 研究简报已生成"
+歧义触发: "[orch-${ORCH_ID}] ❓ 研究问题存在 <N> 个歧义点，等待用户澄清"
+简报确认: "[orch-${ORCH_ID}] 📋 研究简报已确认 → 进入课题拆解"
+```
+
+---
+
+### C. general — 可选
+
+> **设计理由：** general 场景范围太广（从"格式化 JSON"到"设计 CI/CD 流水线"），强制加规划是过度设计。Coordinator 自行判断是否需要。
+
+**判断启发式：**
+```
+预估子任务数:
+  ├── ≤2 → 跳过方案阶段，直接进入 Step 2
+  └── ≥3 → 执行轻量版（与 §B deep_research 相同：需求理解复述 + 歧义澄清）
+           写入 ~/.claude/orchestrator/output/${ORCH_ID}/task-brief.md
+```
+
+**进度报告格式：**
+```
+任务简报: "[orch-${ORCH_ID}] 📝 任务简报已生成（复杂度: <N> 子任务，触发可选方案阶段）"
+跳过方案: "[orch-${ORCH_ID}] ⏭️ 任务简单（<N> 子任务），跳过方案阶段 → 直接拆解"
 ```
 
 ### Step 2: 任务拆解
@@ -246,21 +326,17 @@ Coordinator 将此 JSON 解析后，逐条调用 TaskCreate + 设置 blockedBy�
 
 ### Step 4: 检查点保存
 
-#### 4.0 ID 分配（原子操作，多窗口安全）
+#### 4.0 ID 确认（已在 Step 1.5 预分配）
 
-在创建任何文件前，**必须通过 Bash 一次性生成唯一 orchestrator ID**：
+> `$ORCH_ID`、`$COORDINATOR_PID` 和输出目录已在 Step 1.5 的「ID 预分配」步骤创建。此处直接使用，**无需重复生成**。
 
+确认环境变量和目录就绪：
 ```bash
-ORCH_ID="orch-$(date +%Y%m%d-%H%M%S)-$$"
-COORDINATOR_PID=$$  # 记录 Coordinator 自身 PID，用于中断恢复时判断进程是否存活
-mkdir -p ~/.claude/orchestrator/output/${ORCH_ID}
-# 将 PID 写入独立文件，恢复时直接读取（无需 jq 解析 JSON）
-echo $COORDINATOR_PID > ~/.claude/orchestrator/checkpoints/${ORCH_ID}.pid
+# 确认变量已设置（不应为空）
+echo "ORCH_ID=${ORCH_ID}"
+# 确认目录已存在
+ls -d ~/.claude/orchestrator/output/${ORCH_ID}
 ```
-
-其中 `$$` 是当前 shell 的 PID，不同窗口/会话的 PID 保证不同。`HHMMSS` 提供人类可读的时间顺序。**无需递增计数器，无需锁，天然无竞态。**
-
-示例 ID：`orch-20260628-143025-12345`
 
 创建检查点文件：`~/.claude/orchestrator/checkpoints/${ORCH_ID}.json`
 
