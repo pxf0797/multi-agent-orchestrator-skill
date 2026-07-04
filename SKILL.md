@@ -796,8 +796,6 @@ Agent 输出 → Verify Gate:
 | `code_dev` | 集成测试完成后 → Code Review 前 | Strict | 集成产物 |
 | `deep_research` | 每个维度写作完成后 | Light | 写作 Agent 输出 |
 | `deep_research` | 汇总报告完成后 → 交付前 | Standard | 最终报告 |
-| `deploy_verify` | 并行功能验证完成后 → 性能测试前 | Light | 各功能验证结果 |
-| `deploy_verify` | 性能基准测试完成后 → 部署决策前 | Standard | 性能报告 |
 | `general` | Coordinator 根据风险自行判断 | 动态 | 动态 |
 
 **事件集成：** Verify Gate 判定结果通过 `task.substep` 事件上报，step_id 格式为 `verify-<N>`。

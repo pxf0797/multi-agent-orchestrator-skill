@@ -164,8 +164,8 @@ DAG 调度执行
 
 | 关键词 | 匹配 SOP |
 |--------|---------|
-| 实现/开发/重构/写代码/修bug/添加功能 | software-dev |
-| 研究/调查/分析/报告/对比/总结/调研 | research-report |
+| 实现/开发/重构/写代码/修bug/修复/添加功能/写测试 | software-dev |
+| 研究/调查/分析/报告/对比/总结/侦查/scout/调研/深入 | research-report |
 | 审查/安全检查/审计/code review | code-review（嵌入式 SOP，不作为独立场景自动触发） |
 | 部署/上线/发布/验证/灰度 | deploy-verify |
 | 不匹配上述 | 动态推断（general DAG） |
