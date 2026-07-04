@@ -32,7 +32,7 @@ description: Multi-Agent Orchestrator — 复杂任务的协调者。自动拆�
 
 | 场景 | SOP 模板 | 标准阶段（每个阶段可含多个Task） |
 |------|---------|--------------------------------|
-| `code_dev` | 软件开发 SOP | 1.需求分析(Coordinator) → 2.架构设计(Architect) → 3.并行开发(Developer×N) → 4.质量验证(Verifier) → 5.集成测试(QA) → 6.代码审查(Reviewer) |
+| `code_dev` | 软件开发 SOP | 0.方案自审查(Coordinator) → 1.需求分析与架构设计(Architect) → 2.并行模块开发(Developer×N) → 3.质量验证(Verifier) → 4.集成测试(QA) → 5.代码审查(Reviewer) |
 | `deep_research` | 研究报告 SOP | 1.课题拆解(Coordinator) → 2.并行搜索(Researcher×N) → 3.分类整理(Writer×N) → 4.报告合成(Writer) → 5.质量验证(Verifier) |
 | `general` | 动态推断 | Coordinator 根据目标自行设计阶段划分 |
 
@@ -43,6 +43,138 @@ SOP 使用方式：
 - SOP 阶段间的依赖关系自动转化为 Task blockedBy 链
 - Coordinator 阶段由编排者内部完成，不创建独立 Agent Task
 
+### Step 1.5: 方案设计与自审查（code_dev 场景）
+
+> **触发条件：** 仅当场景识别为 `code_dev` 时执行本阶段。`deep_research` 和 `general` 场景跳过，直接进入 Step 2。
+>
+> **执行者：** Coordinator 内部完成，不创建 Agent Task。本阶段目标是**在派发昂贵的 Agent 任务之前，用最少 Token 把方案想清楚**。
+
+#### 1.5a 方案生成
+
+Coordinator 根据用户需求，生成初步方案并写入 `~/.claude/orchestrator/output/<orch-id>/initial-plan.md`：
+
+```markdown
+# 方案设计
+
+## 1. 需求理解（用自己的话复述）
+- 核心目标是什么
+- 用户明确提到了哪些功能点
+- 用户隐含的期望是什么（推断 + 标注不确定度）
+
+## 2. 变更分析
+<!-- 根据任务类型选择对应模式 -->
+### 全新开发模式
+- 方案覆盖度：逐条对照需求，确认每个功能点都有对应设计
+- 遗漏检查：有没有用户提到但方案未覆盖的点？
+
+### 修改/重构模式
+- 变更前后对比：改了什么、影响了什么
+- 兼容性检查：变更是否会破坏现有功能？
+- 边界影响：哪些模块/文件会间接受影响？
+
+## 3. 技术方案概述
+- 架构思路（模块划分、数据流方向）
+- 关键技术选型及理由
+- 模块间接口契约草案
+
+## 4. 关键决策点
+- 决策项 + 选择 + 理由 + 替代方案（为什么不用）
+
+## 5. 风险与假设
+- 技术风险（哪些地方可能出错）
+- 假设清单（假设了什么前提，标注置信度）
+```
+
+#### 1.5b 自审查（Self-Review）
+
+Coordinator 对方案执行自审查，逐项检查：
+
+```
+审查清单：
+□ 需求覆盖度 — 每个用户提到的功能点方案中都有对应设计？
+□ 逻辑一致性 — 模块间数据流是否闭环？接口是否匹配？
+□ 技术可行性 — 所选技术栈是否适合该问题规模？
+□ 简洁性 — 是否有过度设计？（对照 CLAUDE.md "Simplicity First"）
+□ 边界与异常 — 空值/超长/并发/失败场景是否考虑？
+□ 安全性 — 是否有明显的安全隐患（注入/凭证泄露/权限）？
+```
+
+#### 1.5c 问题修正循环
+
+若自审查发现问题：
+
+```
+发现问题
+  │
+  ├── 问题明确且可自行修正
+  │     → 更新 initial-plan.md，同步更新受影响的方案章节
+  │     → 回到 1.5b 重新审查（最多 2 轮）
+  │     → 第 2 轮仍有问题 → 如实记录到方案的"遗留问题"段，不阻塞流程
+  │
+  └── 问题涉及需求理解歧义
+        → 进入 1.5d 歧义处理
+```
+
+**进度报告格式：**
+```
+方案修正: "[orch-<id>] 🔧 方案自审查发现 <N> 个问题，第 <X>/2 轮修正"
+修正完成: "[orch-<id>] ✅ 方案自审查通过 (审查轮次: <N>)"
+遗留问题: "[orch-<id>] ⚠️ 方案有 <N> 个遗留问题，已记录到 initial-plan.md，继续执行"
+```
+
+#### 1.5d 歧义处理
+
+当 Coordinator 对需求存在**多种合理解读**时，触发 HITL input gate：
+
+```
+歧义触发条件（满足任一即触发）：
+- 用户需求存在 ≥2 种合理的技术解读
+- 关键参数未指定（如：语言/框架/性能目标）
+- 需求之间存在潜在矛盾（如："高性能" + "全量同步"）
+- 用户使用了模糊词汇（"优化"/"改进"/"完善" 等没有具体指标）
+
+触发 HITL input gate:
+  → 展示: 歧义点列表 + 每种解读的方案差异 + 推荐选项
+  → 等待用户选择或给出新描述
+  → 根据反馈更新方案
+  → 回到 1.5b 重新审查
+```
+
+**HITL gate 配置：**
+```json
+{
+  "gate_id": "plan-ambiguity",
+  "after_task": null,
+  "mode": "input",
+  "question": "方案存在以下歧义，请选择或补充描述：\n1. <歧义点1>: 选项A / 选项B\n2. <歧义点2>: ...",
+  "timeout": 3600
+}
+```
+
+**进度报告格式：**
+```
+歧义触发: "[orch-<id>] ❓ 方案存在 <N> 个歧义点，等待用户澄清"
+歧义解决: "[orch-<id>] ✅ 歧义已澄清，方案已更新"
+```
+
+#### 1.5e 方案确认与衔接
+
+方案自审查通过后：
+1. 标记 `initial-plan.md` 状态为 `confirmed`
+2. 将方案摘要（≤500 字）注入 Step 2 的 Architect Agent prompt 的 `[Design Context]` 段
+3. 方案的"风险与假设"段注入后续 Verifier Agent 的验证维度
+4. 进入 Step 2: 任务拆解
+
+**事件上报：**
+```json
+{"event":"orchestrator.phase","orch_id":"<id>","data":{"phase":"plan_review","status":"completed","rounds":<N>,"ambiguities_resolved":<N>}}
+```
+
+**进度报告格式：**
+```
+方案确认: "[orch-<id>] 📋 方案已确认 (自审查 <N> 轮, 解决歧义 <M> 个) → 进入任务拆解"
+```
+
 ### Step 2: 任务拆解
 
 将目标拆为 2-10 个子任务。每个子任务：
@@ -50,15 +182,17 @@ SOP 使用方式：
 - 可独立验证完成与否
 - 标注与其他子任务的依赖关系
 
+> **code_dev 场景：** 任务拆解以 Step 1.5 确认的方案为输入。Architect Agent 的 prompt 中注入 `[Design Context]` 段（方案摘要），确保架构设计与前期方案一致。
+
 ### Step 3: 生成 DAG 并创建 Task
 
 用 TaskCreate 创建所有子任务。识别依赖 → 用 `addBlockedBy` 设置。
 
 **代码开发 DAG 模板**（详见 `references/code-dev-dag.md`）：
 ```
-架构设计(T_arch) → 并行模块开发(T1...Tn) → 并行验证(Tx...Ty,Standard) → 集成汇总(Tz) → 集成验证(Strict) → Code Review(可选)
+方案自审查(Coordinator, §1.5) → 架构设计(T_arch) → 并行模块开发(T1...Tn) → 并行验证(Tx...Ty,Standard) → 集成汇总(Tz) → 集成验证(Strict) → Code Review(可选)
 ```
-并行开发前必须有架构设计阶段，确保模块接口契约明确定义。集成汇总 Agent 遇到代码冲突时，以接口契约为准裁决，冲突不可自动解决时标记到集成报告中。
+方案自审查阶段不创建 Agent Task，由 Coordinator 内部完成。通过后才进入架构设计。并行开发前必须有架构设计阶段，确保模块接口契约明确定义。
 
 **深度研究 DAG 模板**（详见 `references/deep-research-dag.md`）：
 ```
@@ -449,11 +583,12 @@ Agent (后台子进程)
 │   └── <orch-id>.seq              ← Coordinator消费者游标（记录已消费的 JSONL 行号）
 ├── output/
 │   └── <orch-id>/                 ← 每个编排独立的输出子目录（**多窗口安全**）
+│       ├── initial-plan.md        ← Coordinator 方案自审查输出（code_dev 场景）
+│       ├── architecture-design.md ← Architect Agent 架构方案
 │       ├── search-<dim>.md        ← Researcher Agent 原始搜索结果
 │       ├── write-<dim>.md         ← Writer Agent 整理报告
 │       ├── integration-summary.txt← QA Agent 集成结果
 │       ├── review-report.txt      ← Reviewer Agent 审查报告
-│       ├── architecture-design.md ← Architect Agent 架构方案
 │       ├── qa-report.md           ← QA Agent 测试报告
 │       ├── shared.jsonl           ← 轻量共享上下文（§5.8）
 │       └── history.log            ← 本编排的操作日志

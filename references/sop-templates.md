@@ -22,18 +22,22 @@ DAG 调度执行
 ## SOP 1: 软件开发 (software-dev)
 
 **触发**: `code_dev` 场景
-**描述**: 从需求到代码审查的完整软件开发流程
+**描述**: 从需求到代码审查的完整软件开发流程。在任务拆解前新增**方案自审查阶段**（Coordinator 内部），确保方向正确后再派发 Agent 任务。
 
 | 阶段 | 角色 | 并行度 | 输出 | HITL | 验证 |
 |------|------|--------|------|------|------|
-| 1. 需求分析与拆解 | Architect | 1 | 模块划分方案、接口契约 | yes | — |
+| 0. 方案设计与自审查 | Coordinator | 1 | 初步方案(initial-plan.md) | yes(歧义时) | — |
+| 1. 需求分析与架构设计 | Architect | 1 | 模块划分方案、接口契约 | yes | — |
 | 2. 并行模块开发 | Developer | max(10) | 各模块代码+测试 | no | Standard |
 | 3. 集成测试 | QA | 1 | 集成测试报告 | yes | Strict |
 | 4. 代码审查 | Reviewer | 1 | 审查报告 | no | — |
 
+**Phase 0 说明：** Coordinator 先自行完成方案设计与自审查（生成方案 → 审查问题 → 修正或澄清歧义 → 确认），通过后才进入 Phase 1 派发 Architect Agent。详见 skill.md §1.5。
+
 **DAG 流程:**
 ```
-需求分析(Architect) → [HITL: 方案审批]
+方案自审查(Coordinator) → [HITL: 歧义澄清(仅在歧义时触发)]
+  → 需求分析与架构设计(Architect) → [HITL: 方案审批]
   → 并行模块开发(Developer×N) → 并行验证(Verifier×N, Standard)
   → 集成测试(QA) → 集成验证(Verifier×3, Strict)
   → [HITL: 测试报告审批]
