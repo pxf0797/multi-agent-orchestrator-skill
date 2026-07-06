@@ -538,7 +538,7 @@ HITL Gate 完整配置结构：
 **实测结论：** Teams 模式下 Workers 仅发 `idle_notification`，无法通过消息返回结果，需手动 shutdown。直调 Agent 自动通知+完整输出+自动结束。详见 GitHub 仓库 [multi-agent-orchestrator-skill/design.md](https://github.com/pxf0797/multi-agent-orchestrator-skill/blob/main/design.md) §5.1。
 
 **角色模板加载（详见 `references/role-templates.md`）：**
-完整角色定义（Architect/Developer/QA/Researcher/Writer/Reviewer/Verifier）在独立模板文件中。调度前，根据任务类型从角色模板库匹配角色定义，注入 Agent prompt：
+完整角色定义（Architect/Developer/QA/Researcher/Writer/Reviewer/Verifier/**Trace Agent**）在独立模板文件中。调度前，根据任务类型从角色模板库匹配角色定义，注入 Agent prompt：
 ```
 任务类型 → 角色匹配：
   编码/实现 → Developer（角色模板: role+goal+backstory+skills+constraints+output）
@@ -548,6 +548,23 @@ HITL Gate 完整配置结构：
   写作/整理 → Writer
   审查/检查 → Reviewer
   质量验证 → Verifier（角色模板: role+goal+backstory+skills+constraints+output）
+  数据追踪/根因定位 → Trace Agent（用真实数据逐行追踪，不静态分析）⭐ 新增
+```
+
+**Trace Agent 分发规则 (⭐ 新增):**
+Coordinator 在以下条件**任一满足**时，**必须**调度 Trace Agent 而非普通分析 Agent:
+- (a) 同一问题修复 ≥2 次仍未解决
+- (b) Bug 涉及时间比较、数值比较、或字符串比较
+- (c) Bug 涉及级联/流水线/多级数据传递
+- (d) Coordinator 自己也无法确定根因
+
+Trace Agent 与普通分析 Agent 的区别:
+| | 分析 Agent | Trace Agent |
+|---|---|---|
+| 输入 | 源代码 | 源代码 + 实际 DB 数据 |
+| 方法 | 读代码推理 | 运行函数，输出每一步中间值 |
+| 输出 | 分析文档 | 逐行追踪日志 + 具体数值 |
+| 可靠性 | 中（推理可能遗漏） | 高（事实即代码行为） |
 
 角色模板注入格式（嵌入 Agent prompt 开头）：
   [Role: <角色名>]
@@ -798,6 +815,17 @@ Agent 输出 → Verify Gate:
 | `deep_research` | 汇总报告完成后 → 交付前 | Standard | 最终报告 |
 | `general` | Coordinator 根据风险自行判断 | 动态 | 动态 |
 
+**扩展检查 — 三维追问 (⭐ 新增):**
+
+每次 bug 修复完成后，Coordinator 必须执行三个追问，可委托给 Agent:
+1. **横向**: "还有哪些函数/模块有同样的代码模式？" → 派 Agent 搜索相似模式（如 `append`/`extend`/`+=`）
+2. **纵向**: "这个修复会影响哪些下游/上游逻辑？" → 派 Agent 追踪调用链
+3. **边界维**: "所有边界条件都覆盖了吗？" → 参照 `references/debugging-meta-patterns.md` 元模式 4
+
+**假设验证 (⭐ 新增):**
+
+每次 Agent 产出后，Coordinator 追问: "这个产出依赖什么假设？在运行时这些假设还成立吗？"。参照 `references/debugging-meta-patterns.md` 元模式 1。
+
 **事件集成：** Verify Gate 判定结果通过 `task.substep` 事件上报，step_id 格式为 `verify-<N>`。
 
 #### 5.7 动态自适应 DAG（Adaptive Replanning）
@@ -1024,7 +1052,7 @@ fi
 | 文档 | 内容 |
 |------|------|
 | [quick-start.md](references/quick-start.md) | 快速入门：3 个完整示例 + 命令速查 |
-| [role-templates.md](references/role-templates.md) | 7 种角色模板（Architect/Developer/QA/Researcher/Writer/Reviewer/Verifier） |
+| [role-templates.md](references/role-templates.md) | 8 种角色模板（Architect/Developer/QA/Researcher/Writer/Reviewer/Verifier/Trace Agent） |
 | [sop-templates.md](references/sop-templates.md) | 4 个领域 SOP（software-dev/research-report/code-review/deploy-verify） |
 | [hitl-workflow.md](references/hitl-workflow.md) | 人机协作工作流（三种模式 + SOP 集成） |
 | [checkpoint-guide.md](references/checkpoint-guide.md) | 检查点系统（含增量检查点 Level 2） |
@@ -1032,6 +1060,7 @@ fi
 | [deep-research-dag.md](references/deep-research-dag.md) | 深度研究 DAG 模板 |
 | [general-dag.md](references/general-dag.md) | 通用 DAG 模板 |
 | [dependency-dsl.md](references/dependency-dsl.md) | 声明式 DSL 语法参考 |
+| [debugging-meta-patterns.md](references/debugging-meta-patterns.md) | 调试元模式 — 假设追踪/根因三角定位/具体优先/三维扩展 ⭐ 新增 |
 | [design.md](design.md) | 完整架构设计文档 |
 
 ## 使用方式
