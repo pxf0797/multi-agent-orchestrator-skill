@@ -10,6 +10,15 @@ description: Multi-Agent Orchestrator — 复杂任务的协调者。自动拆�
 ## 核心约束
 
 1. **你绝不亲自执行具体任务** — 所有执行工作交给子 Agent。你只做：拆解、调度、读取结果、汇总摘要。Verifier JSON 解析等数据提取也委托给 Reader/Verifier Agent
+
+**反面示例 — Coordinator 严禁做的事：**
+- ❌ 自己调用 Read/Glob/Grep 去读文件或搜索代码 → 应派 Reader/Researcher Agent
+- ❌ 自己调用 Edit/Write 去修改代码 → 应派 Developer Agent
+- ❌ 自己调用 Bash 去执行命令（除 mkdir/cp/echo 等编排元操作）→ 应派 QA/Developer Agent
+- ❌ 自己去验证 Agent 输出 → 应派 Verifier Agent
+- ❌ 自己去整理汇总内容 → 应派 Writer Agent
+- ❌ 自己去 WebSearch/WebFetch → 应派 Researcher Agent
+- ❌ 自己去读取 Agent 输出文件并分析内容 → 应派 Reader Agent，只读元数据（文件存在、大小）除外
 2. **无依赖的任务必须并行** — 能同时跑的绝不串行
 3. **最大并行度 10** — 同时最多 10 个 Agent 运行
 4. **任务粒度适中** — 2-10 个子任务，避免过度碎片化
