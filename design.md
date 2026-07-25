@@ -1249,3 +1249,16 @@ DAG: 测试 → 性能基准 → [HITL Gate — Approval] → 部署
 ---
 
 *本设计基于 Anthropic Managed Agents 架构分析 + Claude Code v2.1.142 现有能力 + 多 Agent 框架生态对标。*
+
+---
+
+## 研究参考
+
+以下文档为 Orchestrator 的设计与改进提供了研究基础和外部视角：
+
+| 文档 | 说明 |
+|------|------|
+| [mattpocock-skills-analysis.md](docs/research/mattpocock-skills-analysis.md) | Matt Pocock 的 Skills 体系深度分析研究报告，覆盖其 Skill 设计模式、触发机制、上下文管理策略 |
+| [improvement-suggestions.md](docs/research/improvement-suggestions.md) | 基于外部研究和实践总结的 Multi-Agent Orchestrator 改进建议（8 条，含 completed/wontfix/planned 分类） |
+
+核心术语的统一定义见 **[共享词汇表](references/glossary.md)**，包含 18 个术语的精确定义、类比/示例和术语关系速查表。

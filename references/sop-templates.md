@@ -1,4 +1,8 @@
-# 领域 SOP 模板库
+# 领域 SOP 模板库 — Primitive 层（厚）
+
+> **两层结构中属于 Primitive 层（厚）：** 本文件包含每个 SOP 的完整执行指南（阶段细节、角色定义、并行度、验证强度、输出格式、HITL 位置、反模式）。场景匹配使用 **Shell 层**（skill.md Step 1 的 SOP 表格），确定具体场景后才按需加载本文件中的对应 SOP 章节。
+>
+> **维护约定：** 新增 SOP 时需同时更新两处 — skill.md Step 1 表格（Shell，追加一行）和本文件（Primitive，追加完整章节）。修改 SOP 的阶段细节只需改本文件。文件名约定：如未来某个 SOP 的 Primitive 过长（>200 行），可拆分为独立文件 `sop-<场景名>-detail.md`，在本文件中保留链接。
 
 借鉴 MetaGPT 的固定 SOP 流程思想，为常见任务类型预定义标准化操作流程。SOP 提供流程骨架，Coordinator 填充具体任务内容。
 

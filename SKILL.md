@@ -1,6 +1,17 @@
 ---
 name: multi-agent-orchestrator
-description: Multi-Agent Orchestrator — 复杂任务的协调者。自动拆解目标为子任务、生成 DAG 依赖图、并行调度 Agent、汇总结果。触发场景：用户要求并行处理、多 Agent 协作、复杂多步骤任务、使用 /orchestrate 或 /swarm 命令。支持代码开发、深度研究、部署验证、通用任务四种场景。
+version: "2.4.0"
+maturity: stable
+invocation: auto
+description: Multi-Agent Orchestrator — 复杂任务的协调者。自动拆解目标为子任务、生成 DAG 依赖图、并行调度 Agent、汇总结果。支持代码开发、深度研究、部署验证、通用任务四种场景。
+triggers:
+  - 并行
+  - 多个 agent
+  - orchestrate
+  - swarm
+  - 同时
+  - 多步骤
+  - 工作流
 ---
 
 # Multi-Agent Orchestrator
@@ -9,7 +20,7 @@ description: Multi-Agent Orchestrator — 复杂任务的协调者。自动拆�
 
 ## 核心约束
 
-1. **你绝不亲自执行具体任务** — 所有执行工作交给子 Agent。你只做：拆解、调度、读取结果、汇总摘要。Verifier JSON 解析等数据提取也委托给 Reader/Verifier Agent
+1. **你的唯一职责：分析目标 → 拆解任务 → 调度 Agent → 汇总结果** — 所有具体执行工作交给子 Agent。你只做：拆解、调度、读取检查点元数据（文件存在/大小/行数）、汇总统计摘要。Verifier JSON 解析等数据提取也委托给 Reader/Verifier Agent
 
 **反面示例 — Coordinator 严禁做的事：**
 - ❌ 自己调用 Read/Glob/Grep 去读文件或搜索代码 → 应派 Reader/Researcher Agent
@@ -19,6 +30,17 @@ description: Multi-Agent Orchestrator — 复杂任务的协调者。自动拆�
 - ❌ 自己去整理汇总内容 → 应派 Writer Agent
 - ❌ 自己去 WebSearch/WebFetch → 应派 Researcher Agent
 - ❌ 自己去读取 Agent 输出文件并分析内容 → 应派 Reader Agent，只读元数据（文件存在、大小）除外
+
+**正面示例 — Coordinator 应该做的事（非穷举清单）：**
+- 分析目标、识别场景类型、选择 SOP 模板
+- 生成方案文档（initial-plan.md），执行自审查后进入任务拆解
+- 将任务描述注入对应角色模板，spawn Agent（Agent 工具调用）
+- 读取检查点文件的 `status`/`updated_at` 等元数据字段做状态决策
+- 读取事件 JSONL 的文件大小/行数，用 `tail -n +<N>` 读取增量事件行
+- 汇总 Agent 完成通知中的摘要信息，生成统计表（耗时/Token/完成率）
+- 在 HITL gate 暂停时展示已完成阶段的摘要 + 下一步选项
+- 执行编排元操作：mkdir/cp/echo 等（创建目录、复制交付物、写入检查点）
+
 2. **无依赖的任务必须并行** — 能同时跑的绝不串行
 3. **最大并行度 10** — 同时最多 10 个 Agent 运行
 4. **任务粒度适中** — 2-10 个子任务，避免过度碎片化
@@ -38,19 +60,24 @@ description: Multi-Agent Orchestrator — 复杂任务的协调者。自动拆�
 | `deploy_verify` | 部署/上线/发布/验证/灰度 | 环境检查 → 并行验证 → 部署决策 |
 | `general` | 不匹配上述 | 动态推断依赖关系 |
 
-场景识别后，加载对应的领域 SOP 模板作为流程骨架（完整定义见 `references/sop-templates.md`）：
+场景识别后，加载对应的领域 SOP 模板作为流程骨架。
 
-| 场景 | SOP 模板 | 标准阶段（每个阶段可含多个Task） |
-|------|---------|--------------------------------|
-| `code_dev` | 软件开发 SOP | 0.方案自审查(Coordinator) → 1.需求分析与架构设计(Architect) → 2.并行模块开发(Developer×N) → 3.质量验证(Verifier) → 4.集成测试(QA) → 5.代码审查(Reviewer) |
-| `deep_research` | 研究报告 SOP | 0.研究简报(Coordinator) → 1.课题拆解(Coordinator) → 2.并行搜索(Researcher×N) → 3.分类整理(Writer×N) → 4.报告合成(Writer) → 5.质量验证(Verifier) |
-| `deploy_verify` | 部署验证 SOP | 1.环境检查(QA) → 2.并行功能验证(QA×N) → 3.性能基准测试(QA) → 4.部署决策(Coordinator) |
-| `general` | 动态推断 | 预估≥3子任务时执行轻量方案阶段(§1.5C)，否则直接拆解 |
+> **SOP 两层结构（Shell + Primitive）：** 下表是 **Shell 层**（薄），仅含场景匹配条件 + 阶段骨架 + 估算并行度 + HITL 关卡位置。场景匹配后，Coordinator 在 Step 2 确定具体 SOP 时才加载对应 **Primitive 层**（厚）——完整的阶段指南、角色定义、验证强度、反模式见 `references/sop-templates.md`。
+> 
+> **Token 优化：** Step 1 只加载本表（~100 Token），Step 2 按需加载单个 SOP 的 Primitive（~500 Token）。避免一次加载 4 个 SOP 完整细节（~2000 Token）。
+
+| 场景 | SOP 模板 | 阶段骨架 | 典型并行度 | HITL 关卡 |
+|------|---------|---------|-----------|----------|
+| `code_dev` | 软件开发 SOP | 方案自审查(Coordinator) → 架构设计(Architect) → 并行开发(Dev×N) → 并行验证(Verifier×N) → 集成测试(QA) → 集成验证(Strict) → Code Review(Reviewer) | 开发 3-10 / 验证 3-10 | 架构审批 / 测试报告审批 |
+| `deep_research` | 研究报告 SOP | 研究简报(Coordinator) → 课题拆解(Coordinator) → 并行搜索(Researcher×N) → 并行写作(Writer×N) → 汇总报告(Writer) → 报告验证(Verifier) | 搜索 3-5 / 写作 2-3 | 方向确认 / 报告审阅 |
+| `deploy_verify` | 部署验证 SOP | 环境检查(QA) → 并行功能验证(QA×N: 核心路径/边界/异常/回归) → 性能基准(QA) → 部署决策(Coordinator) | 验证 4-10 | 上线决策 |
+| `general` | 动态推断 | 轻量方案(Coordinator, 可选) → 动态拆解 → DAG调度 | 动态 | 动态 |
 
 SOP 使用方式：
+- **Shell 层**（上表）用于 Step 1 场景匹配 — 仅含阶段骨架，Token 消耗小
+- **Primitive 层**（`references/sop-templates.md`）在 Step 2 确定场景后按需加载 — 含完整执行细节
 - SOP 定义"这个领域通常怎么做"，提供流程骨架
 - Coordinator 根据具体目标填充"这次具体做什么"，生成具体 Task
-- 每个 SOP 阶段标注：角色类型、推荐并行度、是否含 HITL 关卡
 - SOP 阶段间的依赖关系自动转化为 Task blockedBy 链
 - Coordinator 阶段由编排者内部完成，不创建独立 Agent Task
 
@@ -161,37 +188,53 @@ Coordinator 对方案执行自审查，逐项检查：
 
 当 Coordinator 对需求存在**多种合理解读**时，暂停并请用户澄清。
 
-> **实现方式：** 此阶段尚未创建检查点文件（检查点在 Step 4 创建），因此歧义处理不经过标准 HITL 管线。Coordinator 通过 `AskUserQuestion` 直接与用户交互，下面的 JSON 仅作文档参考格式。
+> **实现方式：** 此阶段尚未创建检查点文件（检查点在 Step 4 创建），因此歧义处理不经过标准 HITL 管线。Coordinator 通过 `AskUserQuestion` 直接与用户交互。
 
-```
-歧义触发条件（满足任一即触发）：
+**核心原则：逐问题采访（Grilling Mode）**
+- **一问一答** — 每次只问一个问题，用户一次只需集中精力思考一个决策。一次展示多个问题会让人认知过载
+- **决策归人，事实归 AI** — 能从文件系统/网络查到的信息 AI 自己查，只有决策问题才停下来问
+- **每个问题附带推荐答案** — 把认知负担留给 AI，用户只需确认或修改。推荐答案必须附推荐理由
+- **依赖决定顺序** — 先梳理歧义点间的依赖树（哪些问题必须先回答才能判断后面的），被依赖的问题先问
+- **回答后重新评估** — 每个答案可能消除后续歧义点（如用户选了 Python → "用哪个 Web 框架"自然就知道了），动态调整问题队列
+
+**歧义触发条件（满足任一即触发）：**
 - 用户需求存在 ≥2 种合理的技术解读
 - 关键参数未指定（如：语言/框架/性能目标）
 - 需求之间存在潜在矛盾（如："高性能" + "全量同步"）
 - 用户使用了模糊词汇（"优化"/"改进"/"完善" 等没有具体指标）
 
-歧义处理流程:
-  → 展示: 歧义点列表 + 每种解读的方案差异 + 推荐选项
-  → 等待用户选择或给出新描述
-  → 根据反馈更新 initial-plan.md
-  → 回到 A.2 重新审查
-```
+**采访执行流程:**
+  1. 梳理所有歧义点，画出依赖树（哪些问题必须先回答才能判断后面的）
+  2. 按依赖树深度优先，选出当前最需要澄清的一个问题
+  3. 展示该歧义点 + 2-3 个选项 + **推荐选项及理由**
+  4. 等待用户回答
+  5. 基于回答，重新评估剩余歧义点（可能因本次回答而消除部分歧义）
+  6. 若有剩余歧义点 → 回到步骤 2；若无 → 更新 initial-plan.md → 回到 A.2
+  7. 若用户选择"暂停，稍后继续" → 保存当前所有已澄清的决策到 initial-plan.md → 标记方案状态为 `paused`
 
-**交互参考格式（非检查点 HITL）：**
-```json
-{
-  "type": "plan_ambiguity",
-  "questions": [
-    {"point": "<歧义点1>", "options": ["选项A: ...", "选项B: ..."], "recommended": "A"},
-    {"point": "<歧义点2>", "options": ["选项X: ...", "选项Y: ..."], "recommended": "X"}
-  ]
-}
+**批量模式（降级选项）：** 当用户明确说"把所有问题一起列出来"时，使用批量展示模式（一次性列出所有歧义点和推荐选项），格式为原有 JSON `plan_ambiguity`。该模式**仅在用户显式要求时触发**，默认不走批量。
+
+**采访交互格式（每次一个问题）：**
+```
+❓ 歧义点 [<i>/<N>]: <歧义描述>
+
+推荐: 选项 <X> — <推荐理由>
+
+选项:
+  A. <方案A简述及该选择对后续阶段的影响>
+  B. <方案B简述及该选择对后续阶段的影响>
+  C. <方案C简述及该选择对后续阶段的影响>（若无第三个合理选项则不列出）
+
+请选择 A/B/C，或描述你的想法：
 ```
 
 **进度报告格式：**
 ```
-歧义触发: "[orch-${ORCH_ID}] ❓ 方案存在 <N> 个歧义点，等待用户澄清"
-歧义解决: "[orch-${ORCH_ID}] ✅ 歧义已澄清，方案已更新"
+采访开始: "[orch-${ORCH_ID}] ❓ 发现 <N> 个歧义点，开始逐项澄清（预计交互 <N> 轮，依赖关系已梳理）"
+当前问题: "[orch-${ORCH_ID}] ❓ 歧义点 [<i>/<N>]: <问题摘要> — 推荐选项 <X>"
+歧义消除: "[orch-${ORCH_ID}] ✅ 歧义点 <N-M> 至 <N> 因前序回答自动消除（无需额外提问，剩余 <K> 个）"
+歧义解决: "[orch-${ORCH_ID}] ✅ 全部歧义已澄清（实际提问 <K>/<N> 个, <N-K> 个自动消除），方案已更新"
+方案暂停: "[orch-${ORCH_ID}] ⏸️ 方案暂停（已澄清 <K>/<N> 个歧义点），状态已保存到 initial-plan.md"
 ```
 
 #### A.5 方案确认与衔接
@@ -235,16 +278,18 @@ Coordinator 用自己的话复述用户的研究问题，写入 `~/.claude/orche
 
 #### B.2 歧义澄清
 
-与 §A.4 相同的歧义触发条件和交互方式。研究场景的额外触发条件：
+采用与 §A.4 相同的逐问题采访（Grilling Mode），包括依赖树梳理、推荐答案附理由、动态消除后续歧义点。研究场景的额外触发条件：
 - 问题范围过于宽泛（如"研究一下 AI"——哪方面？）
 - 缺少时间范围（"最新"是最近一个月还是一年？）
 - 缺少深度要求（概览 vs 深度分析，Token 消耗差 10 倍）
 
+研究场景的依赖树典型结构：问题范围 → 时间范围 → 深度要求（前方决定后方，而非并列）。
+
 **进度报告格式：**
 ```
 研究简报: "[orch-${ORCH_ID}] 📝 研究简报已生成"
-歧义触发: "[orch-${ORCH_ID}] ❓ 研究问题存在 <N> 个歧义点，等待用户澄清"
-简报确认: "[orch-${ORCH_ID}] 📋 研究简报已确认 → 进入课题拆解"
+采访开始: "[orch-${ORCH_ID}] ❓ 研究问题存在 <N> 个歧义点，开始逐项澄清（预计 <N> 轮交互）"
+简报确认: "[orch-${ORCH_ID}] 📋 研究简报已确认（实际提问 <K>/<N> 个, <N-K> 个自动消除）→ 进入课题拆解"
 ```
 
 ---
@@ -317,7 +362,12 @@ Coordinator 使用 JSON 结构声明任务计划（便于验证和人工调整�
       "model": "haiku|sonnet|opus|fable",
       "description": "详细任务描述",
       "depends_on": [],
-      "output_format": "期望的输出格式"
+      "output_format": "期望的输出格式",
+      "completion_criteria": [
+        "所有引用的文件路径已验证存在",
+        "输出覆盖了任务描述中的每个功能点",
+        "代码通过 typecheck/lint 无报错（如适用）"
+      ]
     }
   ],
   "hitl_gates": [
@@ -580,8 +630,15 @@ Trace Agent 与普通分析 Agent 的区别:
   [Goal: <核心目标>]
   [Backstory: <背景设定，增强行为一致性>]
   [Skills: <擅长的技能列表>]
-  [Constraints: <行为约束>]
-  [Output Format: <期望输出格式>]
+  [Constraints:
+    CRITICAL: <违反则任务视为失败的关键约束，每角色最多2-3条>
+    REMEMBER: <关键但易在长上下文中遗忘的约束>
+    PREFER: <倾向性建议，不强制>]
+  [Output Format:
+    FIRST: <输出开头的结构要求>
+    NEXT: <中间段的结构顺序>
+    FINALLY: <输出必须以什么结束>]
+  [Completion Criteria: <可二元判定的完成条件，每条必须是/否问题，格式参考Step 3的completion_criteria>]
   ---
   <具体任务描述>
 ```
@@ -799,9 +856,10 @@ Agent 输出 → Verify Gate:
 [Goal: 严格验证上游 Agent 的输出质量，给出通过/不通过判定及具体修正建议]
 [Backstory: 你是一名资深 QA 专家，擅长发现输出中的逻辑漏洞、格式问题和遗漏项。你的评判标准客观、具体、可操作]
 [Skills: 结构化验证/Schema 校验/需求对照/边界检查/逻辑一致性检查]
-[Constraints: 只评判质量不修改内容; 每个 issue 必须附具体位置和建议; score 必须有明确扣分理由]
+[Constraints: 只评判质量不修改内容; 每个 issue 必须附具体位置和建议; score 必须有明确扣分理由; 若任务定义了 completion_criteria 必须先逐条检查，任一条不满足则直接退回（pass=false），不进入深度验证]
 [Output Format: 必须将判决结果写入独立 JSON 文件，便于 Coordinator 精确解析]
 [输出指令:
+  0. **Completion Criteria 前置检查（最高优先级）**：若任务 prompt 中附有 `[Completion Criteria]` 段，逐条对照检查。任一条不满足 → pass=false，将失败的条目写入 issues（标注 location: "completion_criteria"，severity: "critical"），跳过步骤1-3的深度验证，直接进入步骤4。全部通过后才进入步骤1。
   1. 执行验证分析（自然语言思考过程）
   2. 将结构化判决写入: ~/.claude/orchestrator/output/<orch-id>/verdict-<task_id>.json
   3. 文件内容为单行 JSON:
@@ -811,6 +869,7 @@ Agent 输出 → Verify Gate:
 ---
 验证目标: <上游任务描述>
 验证标准: <具体验证维度 — 正确性/完整性/格式/需求覆盖>
+验证完成标准: <若任务定义了 completion_criteria，此处逐条列出，供 Verifier 第一步逐条检查>
 上游输出: <Agent 输出内容或文件路径>
 ```
 
@@ -1058,19 +1117,20 @@ fi
 
 ## 参考文档
 
-| 文档 | 内容 |
-|------|------|
-| [quick-start.md](references/quick-start.md) | 快速入门：3 个完整示例 + 命令速查 |
-| [role-templates.md](references/role-templates.md) | 8 种角色模板（Architect/Developer/QA/Researcher/Writer/Reviewer/Verifier/Trace Agent） |
-| [sop-templates.md](references/sop-templates.md) | 4 个领域 SOP（software-dev/research-report/code-review/deploy-verify） |
-| [hitl-workflow.md](references/hitl-workflow.md) | 人机协作工作流（三种模式 + SOP 集成） |
-| [checkpoint-guide.md](references/checkpoint-guide.md) | 检查点系统（含增量检查点 Level 2） |
-| [code-dev-dag.md](references/code-dev-dag.md) | 代码开发 DAG 模板 |
-| [deep-research-dag.md](references/deep-research-dag.md) | 深度研究 DAG 模板 |
-| [general-dag.md](references/general-dag.md) | 通用 DAG 模板 |
-| [dependency-dsl.md](references/dependency-dsl.md) | 声明式 DSL 语法参考 |
-| [debugging-meta-patterns.md](references/debugging-meta-patterns.md) | 调试元模式 — 假设追踪/根因三角定位/具体优先/三维扩展 ⭐ 新增 |
-| [design.md](design.md) | 完整架构设计文档 |
+| 文档 | 内容 | 成熟度 |
+|------|------|--------|
+| [quick-start.md](references/quick-start.md) | 快速入门：3 个完整示例 + 命令速查 | stable |
+| [role-templates.md](references/role-templates.md) | 8 种角色模板（Architect/Developer/QA/Researcher/Writer/Reviewer/Verifier/Trace Agent） | stable |
+| [sop-templates.md](references/sop-templates.md) | 4 个领域 SOP — Primitive 层（Shell 层见 skill.md Step 1） | stable |
+| [hitl-workflow.md](references/hitl-workflow.md) | 人机协作工作流（三种模式 + SOP 集成） | stable |
+| [checkpoint-guide.md](references/checkpoint-guide.md) | 检查点系统（Level 1 任务级 / Level 2 子步骤级 / Level 3 精确级） | stable (L1) / beta (L2) / planned (L3) |
+| [code-dev-dag.md](references/code-dev-dag.md) | 代码开发 DAG 模板 | stable |
+| [deep-research-dag.md](references/deep-research-dag.md) | 深度研究 DAG 模板 | stable |
+| [general-dag.md](references/general-dag.md) | 通用 DAG 模板 | stable |
+| [dependency-dsl.md](references/dependency-dsl.md) | 声明式 DSL 语法参考 | planned |
+| [debugging-meta-patterns.md](references/debugging-meta-patterns.md) | 调试元模式 — 假设追踪/根因三角定位/具体优先/三维扩展 | beta |
+| [glossary.md](references/glossary.md) | 共享词汇表 — orchestrator 核心术语精确定义（11 条目） | beta |
+| [design.md](design.md) | 完整架构设计文档 | stable |
 
 ## 使用方式
 
