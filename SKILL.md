@@ -20,7 +20,7 @@ triggers:
 
 ## 核心约束
 
-1. **你的唯一职责：分析目标 → 拆解任务 → 调度 Agent → 汇总结果** — 所有具体执行工作交给子 Agent。你只做：拆解、调度、读取检查点元数据（文件存在/大小/行数）、汇总统计摘要。Verifier JSON 解析等数据提取也委托给 Reader/Verifier Agent
+1. **你的唯一职责：分析目标 → 拆解任务 → 调度 Agent → 汇总结果** — 所有具体执行工作交给子 Agent。你只做：拆解、调度、读取检查点元数据（文件存在/大小/行数）、**读取 Verifier 判决 JSON 的 pass/score 顶层字段做 unlock/退回决策**、汇总 Agent 完成通知中的结构化摘要生成统计表。Verifier JSON 的 issues/suggestion 详情解析等深层数据提取仍委托给 Reader/Verifier Agent
 
 **反面示例 — Coordinator 严禁做的事：**
 - ❌ 自己调用 Read/Glob/Grep 去读文件或搜索代码 → 应派 Reader/Researcher Agent
@@ -29,7 +29,7 @@ triggers:
 - ❌ 自己去验证 Agent 输出 → 应派 Verifier Agent
 - ❌ 自己去整理汇总内容 → 应派 Writer Agent
 - ❌ 自己去 WebSearch/WebFetch → 应派 Researcher Agent
-- ❌ 自己去读取 Agent 输出文件并分析内容 → 应派 Reader Agent，只读元数据（文件存在、大小）除外
+- ❌ 自己去读取 Agent 输出文件并分析内容 → 应派 Reader Agent，只读元数据（文件存在、大小）、Verifier 判决 JSON 的 pass/score 顶层字段和 Agent 完成通知中的结构化摘要除外
 
 **正面示例 — Coordinator 应该做的事（非穷举清单）：**
 - 分析目标、识别场景类型、选择 SOP 模板
@@ -38,7 +38,7 @@ triggers:
 - 读取检查点文件的 `status`/`updated_at` 等元数据字段做状态决策
 - 读取事件 JSONL 的文件大小/行数，用 `tail -n +<N>` 读取增量事件行
 - 汇总 Agent 完成通知中的摘要信息，生成统计表（耗时/Token/完成率）
-- 在 HITL gate 暂停时展示已完成阶段的摘要 + 下一步选项
+- 在 HITL (Human In The Loop) gate 暂停时展示已完成阶段的摘要 + 下一步选项
 - 执行编排元操作：mkdir/cp/echo 等（创建目录、复制交付物、写入检查点）
 
 2. **无依赖的任务必须并行** — 能同时跑的绝不串行
@@ -104,6 +104,9 @@ COORDINATOR_PID=$$
 mkdir -p ~/.claude/orchestrator/output/${ORCH_ID}
 mkdir -p ~/.claude/orchestrator/events
 mkdir -p ~/.claude/orchestrator/seq_tracker
+mkdir -p ~/.claude/orchestrator/checkpoints
+mkdir -p ~/.claude/orchestrator/checkpoints/archive
+mkdir -p ~/.claude/orchestrator/templates
 echo $COORDINATOR_PID > ~/.claude/orchestrator/checkpoints/${ORCH_ID}.pid
 ```
 
@@ -496,6 +499,8 @@ ls -d ~/.claude/orchestrator/output/${ORCH_ID}
    [ -z "$ANTHROPIC_BASE_URL" ] || [[ "$ANTHROPIC_BASE_URL" == *"api.anthropic.com"* ]]
    ├── 通过 → 尝试 Teams 模式
    └── 不通过 → 创建 teams_disabled 标记 → 使用直调 Agent 模式
+
+> **已知盲区：** 透明代理（如 `ANTHROPIC_BASE_URL=http://localhost:8080` 实际转发到 Anthropic API）会被误判为非 Anthropic 环境。由于 Teams 失败有自动回退机制（`touch teams_disabled`），此误判代价较低，当前保持现状。
 ```
 
 #### 5.2 调度循环
@@ -644,6 +649,7 @@ Trace Agent 与普通分析 Agent 的区别:
 ```
 
 **进度上报注入（P2 流式进度）：**
+> **术语：** P2 为第 2 版进度系统（基于 JSONL 事件流 + seq_tracker 游标），P1 为旧版文本进度行（仍保留向后兼容）。P2 新增 sub-step 事件、心跳、output_preview 等 8 种事件类型。
 调度时，从 `~/.claude/orchestrator/templates/progress-injection.md` 加载进度上报模板，嵌入 Agent prompt 末尾。模板指示 Agent 在以下时机通过 Bash 工具上报进度：
 ```
 每个子步骤开始时:
@@ -727,6 +733,7 @@ Agent (后台子进程)
   └── Bash echo >> ~/.claude/orchestrator/events/<orch-id>.jsonl (append-only)
        └── Coordinator 通过调度循环每周期读取新事件（基于 seq_tracker/<orch-id>.seq 行号游标）
             └── wc -l < events/<orch-id>.jsonl 获取当前总行数
+                 └── 若 last_seq > 总行数（文件被外部截断） → 重置 last_seq=0，记录告警事件
                  └── 行数 > last_seq → tail -n +$((last_seq+1)) 读取新增行
                  └── 按序消费 → Compact/Detail/Summary 展示
                  └── 更新游标文件（写入当前总行数）
@@ -772,9 +779,11 @@ Agent (后台子进程)
 
 **向后兼容：** 事件系统是新增的独立JSONL文件，不影响§4检查点格式。P1文本进度行在消费事件时同步发射。事件文件不存在时自动退回到检查点轮询。
 
-**心跳卡死检测：** Coordinator每调度周期检查：任一运行中Agent的最后心跳 > 90秒前 → 标记 `[!] Task #N 可能卡死 (last heartbeat: <timestamp>)`，用户可选择继续等待或强制重试。
+#### 5.2.1 心跳卡死检测
 
-**分级错误恢复（Tiered Error Recovery）：**
+Coordinator每调度周期检查：任一运行中Agent的最后心跳 > 90秒前 → 标记 `[!] Task #N 可能卡死 (last heartbeat: <timestamp>)`，用户可选择继续等待或强制重试。
+
+#### 5.2.2 分级错误恢复（Tiered Error Recovery）
 
 Agent 失败时，Coordinator 根据失败特征自动归类，采取分级策略：
 
@@ -843,7 +852,7 @@ Agent 输出 → Verify Gate:
   │     ├── pass=true  → 解锁下游任务，继续 DAG
   │     └── pass=false → 退回上游 Agent 修正（从 JSON 中提取 issues + suggestion 注入）
   │           → 退回次数 ≤ 上限 → Agent 修正后重新验证
-  │           → 超过上限 → 标记 failed，触发分级错误恢复（见 §5.2 优化2）
+  │           → 超过上限 → 标记 failed，触发分级错误恢复（见 §5.2.2 分级错误恢复）
   └── Strict:
         → 3 个独立 Verifier 并行评判（各自独立上下文）
         → 投票: ≥2 票 pass=true → 通过; 否则退回
@@ -879,6 +888,7 @@ Agent 输出 → Verify Gate:
 |----------|-----------------|---------|---------|
 | `code_dev` | 并行开发完成后 → 集成前 | Standard | 各模块 Agent 输出 |
 | `code_dev` | 集成测试完成后 → Code Review 前 | Strict | 集成产物 |
+| `deep_research` | 并行搜索完成后 → 写作前 | Light | 搜索 Agent 输出 |
 | `deep_research` | 每个维度写作完成后 | Light | 写作 Agent 输出 |
 | `deep_research` | 汇总报告完成后 → 交付前 | Standard | 最终报告 |
 | `general` | Coordinator 根据风险自行判断 | 动态 | 动态 |
@@ -1093,9 +1103,15 @@ if [ -z "$CHECKPOINT_PID" ]; then
   CHECKPOINT_PID=$(python3 -c "import json,sys; print(json.load(sys.stdin).get('coordinator_pid',''))" < <检查点文件> 2>/dev/null)
 fi
 if [ -n "$CHECKPOINT_PID" ] && kill -0 "$CHECKPOINT_PID" 2>/dev/null; then
-  # 进程还活着 → 该编排可能在另一个窗口/会话中仍在运行
-  → 输出: "[orch-<id>] ⏭️ 跳过（PID <pid> 仍存活，可能在其他窗口运行中）"
-  → 跳过此检查点，不提示恢复
+  # 进程还活着 → 进一步验证进程身份（防止 PID 回收误判）
+  PROC_COMM=$(ps -o comm= -p "$CHECKPOINT_PID" 2>/dev/null || echo "")
+  if [[ "$PROC_COMM" == *"claude"* ]] || [[ "$PROC_COMM" == *"node"* ]]; then
+    → 输出: "[orch-<id>] ⏭️ 跳过（PID <pid> 仍存活，可能在其他窗口运行中）"
+    → 跳过此检查点，不提示恢复
+  else
+    # PID 存在但非 Claude Code 进程 → 确认废弃，可安全恢复
+    → 进入恢复流程
+  fi
 else
   # 进程已不存在 → 确认废弃，可安全恢复
   → 进入恢复流程

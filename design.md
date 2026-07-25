@@ -1199,7 +1199,7 @@ DAG: 测试 → 性能基准 → [HITL Gate — Approval] → 部署
 | 基础检查点脚本（任务级，Full Checkpoint） | SKILL.md §4 + `references/checkpoint-guide.md` | P0 | ✅ |
 | 环境检测 + Teams 禁用标记 | SKILL.md §5.1 | P0 | ✅ |
 | Agent 提示词模板 | `templates/progress-injection.md` | P1 | ✅ |
-| 基础角色模板（全部 7 个角色） | `references/role-templates.md` | P1 | ✅ |
+| 基础角色模板（全部 8 个角色） | `references/role-templates.md` | P1 | ✅ |
 | 基础 SOP 模板（4 个领域） | `references/sop-templates.md` | P1 | ✅ |
 | HITL 工作流参考 | `references/hitl-workflow.md` | P1 | ✅ |
 | 快速入门指南 | `references/quick-start.md` | P1 | ✅ |
@@ -1214,7 +1214,7 @@ DAG: 测试 → 性能基准 → [HITL Gate — Approval] → 部署
 | 增量检查点 + 子步骤级恢复（Level 2） | `references/checkpoint-guide.md` §增量检查点 | P0 | ✅ 设计完成，待实现 |
 | HITL v1：关键阶段审批门 | `references/hitl-workflow.md` | P0 | ✅ |
 | 声明式依赖 DSL v1：JSON/YAML 结构化定义 | `dsl/dependency-dsl.md` | P1 | ⏳ |
-| 角色模板库完善（全部 7 个角色） | `references/role-templates.md` | P1 | ✅ |
+| 角色模板库完善（全部 8 个角色） | `references/role-templates.md` | P1 | ✅ |
 | SOP 模板库完善（4 个领域 SOP） | `references/sop-templates.md` | P1 | ✅ |
 | 流式进度反馈 v1：检查点轮询 + 摘要展示 | `templates/progress-injection.md` + SKILL.md §5.5 | P1 | ✅ |
 | 端到端集成测试（3 个场景） | 测试脚本 | P0 | ⏳ |
@@ -1261,4 +1261,4 @@ DAG: 测试 → 性能基准 → [HITL Gate — Approval] → 部署
 | [mattpocock-skills-analysis.md](docs/research/mattpocock-skills-analysis.md) | Matt Pocock 的 Skills 体系深度分析研究报告，覆盖其 Skill 设计模式、触发机制、上下文管理策略 |
 | [improvement-suggestions.md](docs/research/improvement-suggestions.md) | 基于外部研究和实践总结的 Multi-Agent Orchestrator 改进建议（8 条，含 completed/wontfix/planned 分类） |
 
-核心术语的统一定义见 **[共享词汇表](references/glossary.md)**，包含 18 个术语的精确定义、类比/示例和术语关系速查表。
+核心术语的统一定义见 **[共享词汇表](references/glossary.md)**，包含 11 个术语的精确定义、类比/示例和术语关系速查表。
