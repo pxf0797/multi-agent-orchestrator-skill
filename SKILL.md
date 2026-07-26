@@ -20,7 +20,7 @@ triggers:
 
 ## 核心约束
 
-1. **你的唯一职责：分析目标 → 拆解任务 → 调度 Agent → 汇总结果** — 所有具体执行工作交给子 Agent。你只做：拆解、调度、读取检查点元数据（文件存在/大小/行数）、**读取 Verifier 判决 JSON 的 pass/score 顶层字段做 unlock/退回决策**、汇总 Agent 完成通知中的结构化摘要生成统计表。Verifier JSON 的 issues/suggestion 详情解析等深层数据提取仍委托给 Reader/Verifier Agent
+1. **你的唯一职责：分析目标 → 拆解任务 → 调度 Agent → 汇总结果** — 所有具体执行工作交给子 Agent。你只做：拆解、调度、读取检查点元数据（文件存在/大小/行数）、**读取 Verifier 判决 JSON 的 pass/score 顶层字段做 unlock/退回决策**、汇总 Agent 完成通知中的结构化摘要生成统计表（**摘要来自 Agent 完成通知中的结构化数据，非 Coordinator 直接读取 Agent 输出文件**）。Verifier JSON 的 issues/suggestion 详情解析等深层数据提取仍委托给 Reader/Verifier Agent
 
 **反面示例 — Coordinator 严禁做的事：**
 - ❌ 自己调用 Read/Glob/Grep 去读文件或搜索代码 → 应派 Reader/Researcher Agent
@@ -431,7 +431,7 @@ ls -d ~/.claude/orchestrator/output/${ORCH_ID}
   "created_at": "ISO时间戳",
   "scenario": "code_dev|deep_research|deploy_verify|general",
   "goal": "用户原始输入",
-  "checkpoint_mode": "full|incremental",
+  "checkpoint_mode": "full|incremental|compact",
   "checkpoint_version": 2,
   "task_map": {"T-search-dimA": "5", "T-search-dimB": "6"},
 
@@ -500,7 +500,7 @@ ls -d ~/.claude/orchestrator/output/${ORCH_ID}
 新增字段说明：
 - `task_map`: 统一ID模式的 subject→claude_id 反向索引。TaskCreate 后自动建立，供 blockedBy 解析使用
 - `subject_id`: 任务的语义标识符（统一ID模式使用），作为依赖引用的可读键。向后兼容：纯数字ID场景此字段为 null
-- `checkpoint_mode`: full 为任务级检查点（每个Task完成时保存），incremental 为子步骤级（每个sub_step完成时保存）
+- `checkpoint_mode`: full 为任务级检查点（每个Task完成时保存），incremental 为子步骤级（每个sub_step完成时保存），compact 为轻量进度模式（单行摘要，不依赖JSONL事件流，详见§5.5）
 - `sub_steps`: 任务内部的子步骤列表，支持更细粒度的断点续传
 - `hitl_gates`: HITL 审批关卡列表，在指定任务完成后暂停等待用户确认
 - `agent_id`: 调度时记录后台Agent ID，用于完成通知的关联匹配
@@ -583,9 +583,9 @@ while 有未完成任务:
 
   # 阶段3: 完成处理
   收到 Agent 完成通知
-  → 通知中包含 agent_id 和 output_file 路径
-  → **读取 Agent 输出**: 用 Read 工具读取 output_file（或 Agent 写入的 output/<orch-id>/ 下文件）
-  → 通过 agent_id 关联到对应 Task，将输出摘要写入检查点
+  → 通知中已包含 Agent 自行提供的结构化摘要（任务完成状态/主要产出/关键指标）
+  → 通过 agent_id 关联到对应 Task，将**通知中的摘要**写入检查点的 agent_output_summary 字段
+  → 若摘要信息不足（如缺少具体数据）→ 派 Reader Agent 补充提取，Coordinator 自身不直接读取
   → TaskUpdate(status: completed) → 解锁下游任务
   → 更新检查点文件 — **核心字段立即写回**（status / updated_at / tasks[].status / tasks[].retry_count / tasks[].agent_output_ref），**静态字段跳过**（无变更）。**大文本 Agent 输出写入 results/ 子目录**，检查点中仅存 agent_output_ref 路径引用:
       mkdir -p ~/.claude/orchestrator/checkpoints/${ORCH_ID}/results

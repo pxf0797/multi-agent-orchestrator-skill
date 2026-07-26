@@ -2,7 +2,7 @@
 
 定义 Multi-Agent Orchestrator 的核心术语，消除跨文件的概念漂移。Coordinator 和子 Agent 使用统一的术语理解编排过程。
 
-> **使用约定：** skill.md 和 `references/` 下所有文件统一引用本词汇表。角色模板的 `[Backstory]` 段涉及领域术语时链接到对应条目。首次定义 11 个核心术语，经 2 周实践验证后扩展。
+> **使用约定：** skill.md 和 `references/` 下所有文件统一引用本词汇表。角色模板的 `[Backstory]` 段涉及领域术语时链接到对应条目。基础术语 11 条，验证强度已扩展至 5 级（Light/Standard/Strict/Tournament/Adversarial）。
 
 ---
 
@@ -45,19 +45,22 @@
 
 ## 7. Checkpoint（检查点）
 
-- **定义：** DAG 执行状态的持久化快照，支持中断恢复。三种持久化模式：
+- **定义：** DAG 执行状态的持久化快照，支持中断恢复。四种持久化模式：
   - **Full（任务级）：** 每个 Task 完成后保存完整 DAG 状态（stable）
   - **Incremental（子步骤级）：** Task 内每个 sub-step 完成后保存增量数据（beta）
   - **Delta（变更级）：** 任何状态变更时保存字段 diff（planned）
+  - **Compact（轻量进度）：** 单行摘要展示，仅依赖检查点元数据，不依赖 JSONL 事件流（stable，详见 skill.md §5.5）
 - **Rejected meaning:** 检查点不是日志——日志是时序事件流（events/*.jsonl），检查点是状态快照（checkpoints/*.json）
 
 ## 8. Verification Strength（验证强度）
 
-- **定义：** Guard-Verify 质检门禁系统中 Verifier 的审查深度分级：
-  - **Light：** Schema 校验 — 格式完整性、必填字段、输出结构。低风险任务
-  - **Standard：** Schema + LLM 评判 — 正确性、完整性、需求覆盖。常规任务
-  - **Strict：** Schema + 对抗性验证 — 3 个独立 Verifier 投票。高风险任务
-- **Rejected meaning:** 验证强度不是"Verifier 模型的规模"——Light 也可以用大模型跑，关键是检查的维度和投票机制
+- **定义：** Guard-Verify 质检门禁系统中 Verifier 的审查深度分级，共 5 级：
+  - **Light：** Schema 校验 — 格式完整性、必填字段、输出结构。1 个 Verifier，退回上限 1 次。低风险任务（搜索/信息收集）
+  - **Standard：** Schema + LLM 评判 — 正确性、完整性、需求覆盖。1 个 Verifier，退回上限 2 次。常规任务（模块开发/写作整理）
+  - **Strict：** 多 Verifier 投票 — 3 个独立 Verifier 并行评判，≥2 票通过。3 个 Verifier，退回上限 2 次。高风险任务（安全代码/核心结论/集成）
+  - **Tournament：** 三方案竞争型验证 — 3 个独立方案 → pairwise 淘汰赛 → 选最优 + 融合次优 → 人工确认。成本 ~5x，opt-in 激活。适合架构设计/技术选型/关键算法
+  - **Adversarial：** 对抗性验证 — 3 个独立 Verifier 对抗审查（refute-first），≥2 票通过。Verifier 只批判不修正不合成（避免 DW #69551）。适合安全审查/核心业务逻辑
+- **Rejected meaning:** 验证强度不是"Verifier 模型的规模"——Light 也可以用大模型跑，关键是检查的维度和投票机制。Tournament 和 Adversarial 为 opt-in 高级模式，Coordinator 必须在触发前通过 HITL gate 告知用户成本/风险
 
 ## 9. Coordinator（编排者）
 

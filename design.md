@@ -342,7 +342,7 @@ Coordinator:     大模型（opus） — 复杂推理和规划
   "scenario": "code_dev | deep_research | general",
   "goal": "用户原始输入",
   "checkpoint_version": 2,
-  "checkpoint_mode": "full | incremental | delta",
+  "checkpoint_mode": "full | incremental | delta | compact",
   "checkpoint_sequence": 4,
   "dag": {
     "tasks": [
@@ -467,61 +467,14 @@ Level 3: 精确级恢复（Delta 检查点增强 — 远期目标）
 
 ---
 
-## 七、Skill 文件结构
+## 7. 文件结构
 
-```
-~/.claude/skills/
-└── multi-agent-orchestrator/
-    ├── orchestrator.skill           ← 主 Skill 文件（触发逻辑 + Coordinator Prompt）
-    ├── templates/
-    │   ├── code-dev-dag.md         ← 代码开发 DAG 模板
-    │   ├── deep-research-dag.md    ← 深度研究 DAG 模板
-    │   └── general-dag.md          ← 通用 DAG 模板
-    ├── dsl/
-    │   └── dependency-dsl.md       ← 声明式依赖 DSL 语法定义
-    ├── roles/
-    │   ├── architect.md            ← 架构师角色模板
-    │   ├── developer.md            ← 开发者角色模板
-    │   ├── reviewer.md             ← 审查者角色模板
-    │   ├── researcher.md           ← 研究员角色模板
-    │   ├── writer.md               ← 写作者角色模板
-    │   └── qa.md                   ← QA 测试角色模板
-    ├── sops/
-    │   ├── software-dev.md         ← 软件开发 SOP
-    │   ├── research-report.md      ← 研究报告 SOP
-    │   ├── code-review.md          ← 代码审查 SOP
-    │   └── deploy-verify.md        ← 部署验证 SOP
-    ├── scripts/
-    │   ├── checkpoint.sh           ← 检查点读写脚本
-    │   └── env-detect.sh           ← 环境检测（Teams 是否可用）
-    └── prompts/
-        ├── coordinator-system.md   ← Coordinator 系统提示词
-        ├── agent-code-dev.md       ← 代码开发 Agent 提示词模板
-        ├── agent-research.md       ← 研究 Agent 提示词模板
-        └── agent-summarizer.md     ← 汇总 Agent 提示词模板
-```
+当前文件结构以 `references/` 为统一的参考文档目录，扁平化管理所有子文档。
+详见 **SKILL.md §5.5 流式进度事件系统** 末尾的权威目录树。
 
-### 7.1 触发条件
-
-当用户输入包含以下模式时触发：
-- 明确要求多 Agent 协作（"并行"、"同时"、"多个 agent"、"swarm"、"team"）
-- 复杂目标超过单一 Agent 合理处理范围（Coordinator 自动判断）
-- 用户显式调用 `/orchestrate` 或 `/swarm`
-
-### 7.2 入口流程
-
-```
-1. Skill 被触发
-2. Coordinator Prompt 加载
-3. 场景识别 → 匹配领域 SOP 模板
-4. 任务拆解 → 使用声明式 DSL 生成 DAG
-5. 角色分配 → 从角色模板库匹配
-6. env-detect.sh 检测环境（默认直调模式）
-7. HITL 审批关卡注册
-8. 按 DAG 调度 Agent
-9. 检查点持续更新（增量模式）
-10. 结果汇总输出
-```
+核心目录:
+- `references/` — 所有参考文档（SOP模板、角色模板、DAG模板、检查点指南等）
+- `~/.claude/orchestrator/` — 运行时目录（检查点、事件、输出）
 
 ---
 

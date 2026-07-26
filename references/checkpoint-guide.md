@@ -163,9 +163,11 @@ Level 1.5 介于 Level 1（任务级）和 Level 2（子步骤级）之间，通
 ### 目录结构（Level 1.5）
 
 ```
+~/.claude/orchestrator/checkpoints/<orch-id>.json   ← 单文件检查点（~5KB）
+│                                                    内部用注释标注 STATIC/CORE 边界：
+│                                                    // === STATIC (write-once) ===
+│                                                    // === CORE (frequently updated) ===
 ~/.claude/orchestrator/checkpoints/<orch-id>/
-├── core.json          ← 核心字段 (~1KB，高频写入)
-├── static.json        ← 静态字段 (~3KB，只读)
 └── results/
     ├── task-5.json    ← Agent 5 的完整输出
     ├── task-6.json    ← Agent 6 的完整输出
@@ -177,7 +179,7 @@ Level 1.5 介于 Level 1（任务级）和 Level 2（子步骤级）之间，通
 Agent 的完整输出文本不再内联到检查点 JSON 中。检查点只记录文件路径引用 `agent_output_ref`：
 
 ```json
-// core.json 中的任务条目
+// 检查点文件中该任务的条目（CORE 段）
 {
   "claude_task_id": "5",
   "status": "completed",
@@ -199,17 +201,17 @@ echo "$AGENT_OUTPUT" > ~/.claude/orchestrator/checkpoints/<orch-id>/results/task
 
 ### 更新策略
 
-- **Coordinator 只重写核心字段**：通过维护 `core.json` 和 `static.json` 两个独立文件，或通过 `jq` 合并
+- **Coordinator 重写整个文件，但只修改 CORE 段**：检查点文件是单个 JSON，内部用 `// === STATIC (write-once) ===` 和 `// === CORE (frequently updated) ===` 注释标注字段归属。Coordinator 读入整个文件，修改 CORE 段数据，写回整个文件，同时保持 STATIC 段不变
 - **静态字段只读不写**：创建后不再修改（dag_snapshots 追加除外）
-- **向后兼容**：`checkpoint_version: 1` 使用旧格式（单文件，所有字段内联），`checkpoint_version: 2` 使用核心/静态分离格式。Coordinator 根据 `checkpoint_version` 字段自动选择读写策略
+- **向后兼容**：`checkpoint_version: 1` 使用旧格式（单文件，所有字段内联，无注释标注），`checkpoint_version: 2` 使用核心/静态注释分离格式。Coordinator 根据 `checkpoint_version` 字段自动选择读写策略
 
 ### 预期收益
 
 | 指标 | 旧格式 (v1) | 新格式 (v2) | 改善 |
 |------|-----------|-----------|------|
-| 每次状态变更写入量 | 3-50KB | 500B-2KB | 60-80% 减少 |
-| 10 任务编排检查点峰值 | 20-50KB | ~2KB (core) + ~3KB (static) | 核心写入减少 90% |
-| Agent 输出定位 | 解析大型 JSON | 直接读取独立文件 | 按需加载 |
+| 每次状态变更写入量 | 3-50KB | 500B-2KB（仅 CORE 段变更） | 60-80% 减少 |
+| 10 任务编排检查点峰值 | 20-50KB | ~5KB（单文件含 STATIC + CORE，Agent 输出在 results/ 独立存储） | 文件大小减少 75-90% |
+| Agent 输出定位 | 解析大型 JSON | 直接读取 results/ 独立文件 | 按需加载 |
 
 ## 状态转换
 
