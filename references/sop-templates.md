@@ -174,6 +174,39 @@ DAG 调度执行
 
 ---
 
+## 高级验证模式（Tournament / Adversarial）
+
+以下两种高级验证模式为 **opt-in**（需用户确认），不纳入标准 SOP 流程自动触发。Coordinator 在 DAG 设计阶段根据任务特征识别适用场景，通过 HITL gate 告知用户成本与风险，获得确认后激活。
+
+### Tournament 触发场景
+
+适用条件：同一目标存在 ≥2 种合理方案，且方案选择后果重大。
+
+| SOP | 触发条件 | 验证对象 | 成本警告 |
+|-----|---------|---------|---------|
+| `software-dev` | 架构方案存在 ≥2 种合理技术路线、关键算法选型 | 架构设计方案 | ~5x 单 Agent |
+| `research-report` | 研究议题存在 ≥2 个对立观点、高争议结论需要公平对比 | 对立观点方案 | ~5x 单 Agent |
+| `general` | Coordinator 判断存在多种等效方案且决策后果重大 | 竞争方案 | ~5x 单 Agent |
+
+**不适用：** 需求明确的 CRUD 开发、信息收集类任务、成本敏感的批量任务。
+
+### Adversarial 触发场景
+
+适用条件：错误成本极高（安全漏洞/合规风险/资金损失），需要 refute-first 对抗审查。
+
+| SOP | 触发条件 | 验证对象 | 安全约束 |
+|-----|---------|---------|---------|
+| `software-dev` | 认证模块、加密代码、支付逻辑、权限系统 | 安全关键代码 | 对抗Agent只批判不修正 |
+| `research-report` | 涉及法规/合规的结论、可能产生实际影响的建议 | 核心结论的事实基础 | 对抗Agent只批判不修正 |
+| `deploy-verify` | 生产环境部署前的最终安全审查 | 部署安全清单 | 对抗Agent只批判不修正 |
+| `general` | Coordinator 判断错误成本极高的任务 | 关键交付物 | 对抗Agent只批判不修正 |
+
+**不适用：** 格式验证、常规 CRUD 业务逻辑、低风险信息整理。
+
+> **与 Standard/Strict 的关系：** Tournament 和 Adversarial 是 Standard/Strict 的上层补充，非替代。Tournament 用于"方案择优"（方案级别），Strict 用于"产出验证"（产出级别）。Adversarial 用于"安全对抗"（refute-first），Strict 用于"共识投票"（consensus）。两者可组合使用（如 Tournament 选出的方案再由 Adversarial 做安全审查）。
+
+---
+
 ## SOP 选择规则
 
 | 关键词 | 匹配 SOP |

@@ -77,6 +77,140 @@
 }
 ```
 
+## Level 1.5: 核心/静态字段分离（轻量检查点）
+
+Level 1.5 介于 Level 1（任务级）和 Level 2（子步骤级）之间，通过将检查点字段拆分为**核心字段**和**静态字段**来减少每次状态变更的 I/O 量。这是当前 stable 模式的直接优化，不破坏现有检查点兼容性。
+
+### 核心字段（core）— 每 turn 更新
+
+每次状态变更时立即写回。预计大小 500B-2KB：
+
+```json
+{
+  "status": "in_progress",
+  "updated_at": "ISO时间戳",
+  "tasks": [{
+    "claude_task_id": "5",
+    "status": "completed",
+    "retry_count": 0,
+    "agent_output_ref": "results/task-5.json"
+  }],
+  "hitl_gates": [{"gate_id": "x", "status": "pending"}],
+  "budget": {"consumed_estimate": 125000}
+}
+```
+
+**核心字段清单：**
+
+| 字段 | 说明 | 更新频率 |
+|------|------|---------|
+| `status` | 编排整体状态 | 每 turn |
+| `updated_at` | 最后更新时间戳 | 每 turn |
+| `tasks[].status` | 每个任务的状态 | Agent 完成/失败时 |
+| `tasks[].agent_output_ref` | Agent 输出文件路径引用（非内联文本） | Agent 完成时 |
+| `tasks[].retry_count` | 重试次数 | 重试发生时 |
+| `tasks[].error` / `error_type` | 错误信息 | 失败发生时 |
+| `tasks[].recovery_action` | 恢复动作 | 错误恢复时 |
+| `tasks[].started_at` / `completed_at` | 时间戳 | 任务开始/完成时 |
+| `hitl_gates[].status` | HITL 关卡状态 | 审批完成时 |
+| `hitl_gates[].user_response` | 用户回复 | HITL 交互时 |
+| `budget` | Token 消耗估算 | 每 turn |
+
+### 静态字段（static）— 仅创建时写入
+
+创建检查点时一次性写入，后续只读不写。预计大小 ~3KB：
+
+```json
+{
+  "orchestrator_id": "orch-...",
+  "coordinator_pid": "12345",
+  "created_at": "...",
+  "scenario": "code_dev",
+  "goal": "用户原始输入",
+  "checkpoint_mode": "full",
+  "checkpoint_version": 2,
+  "model_provider": "deepseek",
+  "teams_mode": false,
+  "tasks_static": [{
+    "claude_task_id": "5",
+    "subject": "审计端点: /api/users",
+    "description": "...",
+    "blockedBy": [],
+    "criticality": "normal",
+    "completion_criteria": ["检查auth", "验证输入"],
+    "sub_steps": []
+  }],
+  "dag_snapshots": []
+}
+```
+
+**静态字段清单：**
+
+| 字段 | 说明 | 写入时机 |
+|------|------|---------|
+| `orchestrator_id` | 编排唯一标识 | 创建时 |
+| `coordinator_pid` | Coordinator 进程 PID | 创建时 |
+| `created_at` | 创建时间戳 | 创建时 |
+| `scenario` | 场景类型 | 创建时 |
+| `goal` | 用户原始输入 | 创建时 |
+| `checkpoint_mode` | 检查点模式 | 创建时 |
+| `checkpoint_version` | 检查点格式版本（1=旧格式，2=核心/静态分离） | 创建时 |
+| `model_provider` | 模型提供商 | 创建时 |
+| `teams_mode` | 是否 Teams 模式 | 创建时 |
+| `tasks_static` | 任务的静态属性（subject/description/blockedBy/criticality/sub_steps/completion_criteria） | 创建时 |
+| `dag_snapshots` | DAG 变更历史 | DAG 调整时追加 |
+
+### 目录结构（Level 1.5）
+
+```
+~/.claude/orchestrator/checkpoints/<orch-id>/
+├── core.json          ← 核心字段 (~1KB，高频写入)
+├── static.json        ← 静态字段 (~3KB，只读)
+└── results/
+    ├── task-5.json    ← Agent 5 的完整输出
+    ├── task-6.json    ← Agent 6 的完整输出
+    └── ...
+```
+
+### Agent 输出独立存储
+
+Agent 的完整输出文本不再内联到检查点 JSON 中。检查点只记录文件路径引用 `agent_output_ref`：
+
+```json
+// core.json 中的任务条目
+{
+  "claude_task_id": "5",
+  "status": "completed",
+  "agent_output_ref": "results/task-5.json",
+  "retry_count": 0
+}
+```
+
+完整输出写入 `results/<task_id>.json`：
+
+```bash
+# Coordinator 在 Agent 完成时
+mkdir -p ~/.claude/orchestrator/checkpoints/<orch-id>/results
+# 将 Agent 输出写入独立文件
+echo "$AGENT_OUTPUT" > ~/.claude/orchestrator/checkpoints/<orch-id>/results/task-5.json
+```
+
+**恢复时读取：** Coordinator 通过 `agent_output_ref` 路径定位并读取 Agent 输出，无需解析大型内联 JSON。
+
+### 更新策略
+
+- **Coordinator 只重写核心字段**：通过维护 `core.json` 和 `static.json` 两个独立文件，或通过 `jq` 合并
+- **静态字段只读不写**：创建后不再修改（dag_snapshots 追加除外）
+- **向后兼容**：`checkpoint_version: 1` 使用旧格式（单文件，所有字段内联），`checkpoint_version: 2` 使用核心/静态分离格式。Coordinator 根据 `checkpoint_version` 字段自动选择读写策略
+
+### 预期收益
+
+| 指标 | 旧格式 (v1) | 新格式 (v2) | 改善 |
+|------|-----------|-----------|------|
+| 每次状态变更写入量 | 3-50KB | 500B-2KB | 60-80% 减少 |
+| 10 任务编排检查点峰值 | 20-50KB | ~2KB (core) + ~3KB (static) | 核心写入减少 90% |
+| Agent 输出定位 | 解析大型 JSON | 直接读取独立文件 | 按需加载 |
+
 ## 状态转换
 
 ```

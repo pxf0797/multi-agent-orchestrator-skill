@@ -396,6 +396,15 @@ Coordinator 将此 JSON 解析后，逐条调用 TaskCreate + 设置 blockedBy�
 
 **检查点中同时记录两个 ID**：`claude_task_id` 存 TaskCreate 返回的整数 ID（用于 blockedBy/TaskUpdate），DAG 快照中保留逻辑 T-ID（用于人类可读）。
 
+> **🆕 统一 ID 模式（推荐）：** 使用语义字符串作为 TaskCreate 的 subject（如 `"T-search-dimA"`），
+> 同时用作依赖引用键。创建任务时自动建立 `task_map: {subject → claude_id}` 反向索引。
+> 设置 blockedBy 时：TaskUpdate(addBlockedBy: [task_map["T-search-dimA"], task_map["T-search-dimB"]])。
+> 
+> 优势：人类可读的依赖关系（blockedBy: ["T-search-A"] 比 ["5","6"] 更直观），
+> 减少逻辑ID到Claude ID的手动映射错误。
+> 
+> 向后兼容：纯数字ID仍然可用，Coordinator 自动检测 subject 格式选择模式。
+
 优势：结构化、可人工审查修改、可保存为模板复用。
 
 ### Step 4: 检查点保存
@@ -416,27 +425,41 @@ ls -d ~/.claude/orchestrator/output/${ORCH_ID}
 
 ```json
 {
+  // === STATIC (write-once) === — 仅创建时写入，后续只读
   "orchestrator_id": "orch-YYYYMMDD-HHMMSS-<pid>",
   "coordinator_pid": "<pid>",
   "created_at": "ISO时间戳",
-  "updated_at": "ISO时间戳",
-  "status": "in_progress|completed|failed",
   "scenario": "code_dev|deep_research|deploy_verify|general",
   "goal": "用户原始输入",
   "checkpoint_mode": "full|incremental",
+  "checkpoint_version": 2,
+  "task_map": {"T-search-dimA": "5", "T-search-dimB": "6"},
+
+  // === CORE (frequently updated) === — 每次状态变更时立即写回
+  "status": "in_progress|completed|failed",
+  "updated_at": "ISO时间戳",
+
   "tasks": [
     {
+      // === STATIC (task identity) ===
       "claude_task_id": "1",
+      "subject_id": "T-search-dimA",
       "subject": "...",
-      "status": "pending|in_progress|completed|failed",
+      "description": "详细任务描述（创建后不变）",
       "blockedBy": [],
-      "agent_output": null,
+      "criticality": "critical|normal|optional",
+      "completion_criteria": ["可验证的完成条件"],
+
+      // === CORE (task runtime state) ===
+      "status": "pending|in_progress|completed|failed",
+      "agent_output_ref": "results/task-1.json",
       "error": null,
       "error_type": "E1|E2|E3|null",
       "retry_count": 0,
       "recovery_action": "retry|replan|skip|escalate|null",
-      "criticality": "critical|normal|optional",
       "agent_id": "后台Agent ID（用于关联通知）",
+      "started_at": null,
+      "completed_at": null,
       "sub_steps": [
         {
           "step_id": "1.1",
@@ -449,14 +472,17 @@ ls -d ~/.claude/orchestrator/output/${ORCH_ID}
   ],
   "hitl_gates": [
     {
+      // === STATIC ===
       "gate_id": "approval-1",
       "after_task": "3",
       "mode": "approval|input|review",
       "question": "请确认后继续",
+      // === CORE ===
       "status": "pending|approved|rejected",
       "user_response": null
     }
   ],
+  // === STATIC (write-once per snapshot, append-only) ===
   "dag_snapshots": [
     {
       "version": 1,
@@ -472,6 +498,8 @@ ls -d ~/.claude/orchestrator/output/${ORCH_ID}
 **检查点写入原则（防崩溃丢失）：** 检查点采用读-改-写模式。每次 Agent 完成或状态变更后**立即写回**（不攒批），将崩溃丢失窗口缩到最小。Write 工具单次写入是原子的（整文件替换），但读写之间若崩溃则该周期变更丢失——恢复时以检查点为准，Agent 的实际输出文件仍然存在，重跑代价为 1 个 Task。
 
 新增字段说明：
+- `task_map`: 统一ID模式的 subject→claude_id 反向索引。TaskCreate 后自动建立，供 blockedBy 解析使用
+- `subject_id`: 任务的语义标识符（统一ID模式使用），作为依赖引用的可读键。向后兼容：纯数字ID场景此字段为 null
 - `checkpoint_mode`: full 为任务级检查点（每个Task完成时保存），incremental 为子步骤级（每个sub_step完成时保存）
 - `sub_steps`: 任务内部的子步骤列表，支持更细粒度的断点续传
 - `hitl_gates`: HITL 审批关卡列表，在指定任务完成后暂停等待用户确认
@@ -559,7 +587,9 @@ while 有未完成任务:
   → **读取 Agent 输出**: 用 Read 工具读取 output_file（或 Agent 写入的 output/<orch-id>/ 下文件）
   → 通过 agent_id 关联到对应 Task，将输出摘要写入检查点
   → TaskUpdate(status: completed) → 解锁下游任务
-  → 更新检查点文件（含 sub_steps 进度和 agent_output 字段）
+  → 更新检查点文件 — **核心字段立即写回**（status / updated_at / tasks[].status / tasks[].retry_count / tasks[].agent_output_ref），**静态字段跳过**（无变更）。**大文本 Agent 输出写入 results/ 子目录**，检查点中仅存 agent_output_ref 路径引用:
+      mkdir -p ~/.claude/orchestrator/checkpoints/${ORCH_ID}/results
+      echo "$AGENT_OUTPUT" > ~/.claude/orchestrator/checkpoints/${ORCH_ID}/results/task-<N>.json
   → [事件] 发射 checkpoint.saved 事件
   → [事件] 如阶段切换，发射 orchestrator.phase 事件
   → 心跳检测: 超过90秒无 task.heartbeat 事件 → 标记疑似卡死
@@ -798,11 +828,28 @@ Agent (后台子进程)
 
 **向后兼容：** 事件系统是新增的独立JSONL文件，不影响§4检查点格式。P1文本进度行在消费事件时同步发射。事件文件不存在时自动退回到检查点轮询。
 
-#### 5.2.1 心跳卡死检测
+#### 轻量进度模式
+
+当编排任务数 ≤6 且不需要细粒度子步骤追踪时，Coordinator 可使用轻量模式：
+
+**触发条件**: checkpoint_mode = "compact"
+
+**行为**: 每 turn 仅输出一条单行进度：
+```
+[orch-id] 📍 [■■■□□□□] 3/7 Task #2 进行中 [+12s]
+```
+
+**数据来源**: 仅检查点元数据（不依赖 JSONL 事件流），无附加 I/O。
+
+**Detail 回退**: HITL 暂停或用户查询 `进度详情` 时，回退到完整事件时间线展开。
+
+**与 P2 并存**: P2 JSONL 事件流不受影响，仅 Coordinator 的 **展示行为** 切换为轻量。
+
+##### 5.2.1 心跳卡死检测
 
 Coordinator每调度周期检查：任一运行中Agent的最后心跳 > 90秒前 → 标记 `[!] Task #N 可能卡死 (last heartbeat: <timestamp>)`，用户可选择继续等待或强制重试。
 
-#### 5.2.2 分级错误恢复（Tiered Error Recovery）
+##### 5.2.2 分级错误恢复（Tiered Error Recovery）
 
 Agent 失败时，Coordinator 根据失败特征自动归类，采取分级策略：
 
@@ -855,11 +902,13 @@ Coordinator 在每个 SOP 阶段产出后，自动插入 Verify Gate。验证不
 
 **验证强度三级：**
 
-| 级别 | 触发场景 | 行为 | Verifier 数量 | 退回上限 |
-|------|---------|------|-------------|---------|
+| 级别 | 触发场景 | 行为 | Agent 数量 | 退回上限 |
+|------|---------|------|-----------|---------|
 | **Light** | 低风险任务（搜索/信息收集） | Schema 校验：格式完整性、必填字段、输出结构 | 1 | 1 次 |
 | **Standard** | 常规任务（模块开发/写作整理） | Schema + LLM 评判：正确性、完整性、是否满足需求 | 1 | 2 次 |
-| **Strict** | 高风险任务（安全代码/核心结论/集成） | Schema + 对抗性验证：3 个独立 Verifier 投票，≥2 票通过 | 3 | 2 次 |
+| **Strict** | 高风险任务（安全代码/核心结论/集成） | 多 Verifier 投票：3 个独立 Verifier 投票，≥2 票通过 | 3 | 2 次 |
+| **Tournament** | 架构设计/技术选型/关键算法设计 | 3 个独立方案→各自评分→pairwise 比较选最优+融合次优→人工确认 | 3(方案) + 2(评判) | 1 次 |
+| **Adversarial** | 安全审查/事实核查/关键业务逻辑验证 | 3 个独立 Verifier 对抗审查，≥2 票通过；Verifier 只评判不合成 | 3(对抗) | 2 次 |
 
 **验证流程：**
 ```
@@ -872,10 +921,25 @@ Agent 输出 → Verify Gate:
   │     └── pass=false → 退回上游 Agent 修正（从 JSON 中提取 issues + suggestion 注入）
   │           → 退回次数 ≤ 上限 → Agent 修正后重新验证
   │           → 超过上限 → 标记 failed，触发分级错误恢复（见 §5.2.2 分级错误恢复）
-  └── Strict:
-        → 3 个独立 Verifier 并行评判（各自独立上下文）
-        → 投票: ≥2 票 pass=true → 通过; 否则退回
-        → 退回时聚合 3 份 feedback → 上游 Agent 修正
+  ├── Strict:
+  │     → 3 个独立 Verifier 并行评判（各自独立上下文）
+  │     → 投票: ≥2 票 pass=true → 通过; 否则退回
+  │     → 退回时聚合 3 份 feedback → 上游 Agent 修正
+  ├── Tournament:
+  │     → Step 1: 对同一任务启动 3 个 Agent，使用不同模型/方法论各自产出方案
+  │     → Step 2: 每个方案由独立评判 Agent 打分（维度: 正确性/完整性/简洁性/风险）
+  │     → Step 3: Pairwise 淘汰赛——Round 1: A vs B; Round 2: 胜者 vs C（每轮独立评判 Agent，不携带前轮偏见）
+  │     → Step 4: 返回最终胜者 + 比较理由 + 融合建议
+  │     → Step 5: ⚠️ [CRITICAL] 融合步骤由独立 Writer Agent 执行（非 Verifier），避免合成幻觉（DW #69551）。融合方案 = 胜者主方案 + 次优方案的互补亮点
+  │     → Step 6: Coordinator 将最终方案 + 融合理由展示给用户 → HITL approval gate 等待人工确认
+  │     → 成本警告: 约 5x 单 Agent 成本（3 方案 + 2 评判），必须在触发前告知用户
+  └── Adversarial:
+        → Step 1: 产出 Agent 完成任务
+        → Step 2: 3 个独立 Adversarial Verifier 并行对抗审查（各自独立上下文，refute-first 思维）
+        → Step 3: 每个 Adversarial Verifier [CRITICAL: 只做批判，不做修正，不合成结果]
+        → Step 4: 投票——≥2 票"未发现严重问题" → 通过; 否则退回
+        → Step 5: 判决独立呈现——"产出通过 N 项检查，对抗发现 M 项问题，其中 K 项确认有效"
+        → 关键安全措施: 对抗 Agent 只做批判不做修改; Verifier 不合成结果（避免 DW #69551 合成数据损坏）
 ```
 
 **Verifier 角色模板：**
@@ -907,10 +971,15 @@ Agent 输出 → Verify Gate:
 |----------|-----------------|---------|---------|
 | `code_dev` | 并行开发完成后 → 集成前 | Standard | 各模块 Agent 输出 |
 | `code_dev` | 集成测试完成后 → Code Review 前 | Strict | 集成产物 |
+| `code_dev` | 架构设计阶段（技术选型/关键算法） | Tournament | 架构方案（opt-in，需用户确认） |
+| `code_dev` | 安全代码/核心认证模块完成后 | Adversarial | 安全关键代码（opt-in，需用户确认） |
 | `deep_research` | 并行搜索完成后 → 写作前 | Light | 搜索 Agent 输出 |
 | `deep_research` | 每个维度写作完成后 | Light | 写作 Agent 输出 |
 | `deep_research` | 汇总报告完成后 → 交付前 | Standard | 最终报告 |
+| `deep_research` | 冲突结论/高争议议题 | Tournament | 对立观点方案（opt-in，需用户确认） |
 | `general` | Coordinator 根据风险自行判断 | 动态 | 动态 |
+
+> **Tournament/Adversarial 为 opt-in 高级模式：** Coordinator 在识别到适用场景时，必须通过 HITL gate 告知用户成本（Tournament ~5x）和风险（Adversarial 仅批判不修正），获得确认后才激活。
 
 **扩展检查 — 三维追问 (⭐ 新增):**
 
