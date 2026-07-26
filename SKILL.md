@@ -656,6 +656,7 @@ HITL Gate 完整配置结构：
   写作/整理 → Writer
   审查/检查 → Reviewer
   质量验证 → Verifier（角色模板: role+goal+backstory+skills+constraints+output）
+  安全对抗 / refute-first 审查 → Adversarial Verifier（仅 Adversarial 模式激活）
   数据追踪/根因定位 → Trace Agent（用真实数据逐行追踪，不静态分析）[beta]
 ```
 

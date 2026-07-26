@@ -44,9 +44,18 @@ multi-agent-orchestrator-skill/
 ├── design.md             ← Architecture design document
 ├── README.md
 └── references/
-    ├── code-dev-dag.md       ← Code development DAG template
-    ├── deep-research-dag.md  ← Deep research DAG template
-    └── checkpoint-guide.md   ← Checkpoint management guide
+    ├── quick-start.md              ← Quick start guide (3 examples + command reference)
+    ├── role-templates.md           ← 9 role templates (Architect/Developer/QA/…)
+    ├── sop-templates.md            ← 5 domain SOP templates
+    ├── hitl-workflow.md            ← Human-in-the-loop workflow (3 modes)
+    ├── checkpoint-guide.md         ← Checkpoint management guide
+    ├── code-dev-dag.md             ← Code development DAG template
+    ├── deep-research-dag.md        ← Deep research DAG template
+    ├── general-dag.md              ← General-purpose DAG template
+    ├── pipeline-pattern.md         ← Pipeline fan-out pattern
+    ├── dependency-dsl.md           ← Declarative dependency DSL reference
+    ├── debugging-meta-patterns.md  ← Debugging meta-patterns
+    └── glossary.md                 ← Shared glossary (11 terms)
 ```
 
 ## Usage
