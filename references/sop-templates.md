@@ -220,9 +220,9 @@ Coordinator 在匹配到 software-dev 关键词后，执行 Intent 子类型检�
 
 | SOP | 触发条件 | 验证对象 | 成本警告 |
 |-----|---------|---------|---------|
-| `software-dev` | 架构方案存在 ≥2 种合理技术路线、关键算法选型 | 架构设计方案 | ~5x 单 Agent |
-| `research-report` | 研究议题存在 ≥2 个对立观点、高争议结论需要公平对比 | 对立观点方案 | ~5x 单 Agent |
-| `general` | Coordinator 判断存在多种等效方案且决策后果重大 | 竞争方案 | ~5x 单 Agent |
+| `software-dev` | 架构方案存在 ≥2 种合理技术路线、关键算法选型 | 架构设计方案 | ~6x 单 Agent |
+| `research-report` | 研究议题存在 ≥2 个对立观点、高争议结论需要公平对比 | 对立观点方案 | ~6x 单 Agent |
+| `general` | Coordinator 判断存在多种等效方案且决策后果重大 | 竞争方案 | ~6x 单 Agent |
 
 **不适用：** 需求明确的 CRUD 开发、信息收集类任务、成本敏感的批量任务。
 

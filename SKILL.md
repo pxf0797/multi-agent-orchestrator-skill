@@ -51,6 +51,8 @@ triggers:
    | 混合类型（默认） | ≤8 | 折中值，适用于不确定场景 |
 
    物理上限：`min(16, cpu_cores - 2)`。Coordinator 根据实际任务分布选择最严格的适用值。
+
+   实际并发计算公式：`实际并发 = min(建议并发值, 物理上限 min(16, cpu-2), 剩余待调度任务数)`。即三个约束（类型建议上限、系统物理上限、当前可调度任务数）中取最严格值。
 4. **任务粒度适中** — 2-10 个子任务，避免过度碎片化
 5. **每个子任务单一职责** — 独立可验证，有明确输出
 6. **汇总委托** — 去重、合并、报告合成等工作交给 Writer Agent，你只做最终的摘要统计（耗时/Token/完成率）
@@ -326,6 +328,7 @@ Coordinator 基于需求复杂度做快速心智评估（非正式拆解，只�
 > Coordinator 应优先使用 **Pipeline 扇出模式**：创建单个 `pipeline-<name>` 聚合任务，
 > 而非逐个创建 N 个独立 DAG 节点。详见 `references/pipeline-pattern.md`。
 > 注意：Pipeline 是推荐策略，Coordinator 保留根据实际情况逐任务拆解的最终判断权。
+> 关于阈值 ≥5 的推导依据，详见 `references/pipeline-pattern.md` §阈值推导。
 
 ### Step 3: 生成 DAG 并创建 Task
 
@@ -366,7 +369,7 @@ Coordinator 使用 JSON 结构声明任务计划（便于验证和人工调整�
       "criticality": "critical|normal|optional",
       "model": "haiku|sonnet|opus|fable",
       "description": "详细任务描述",
-      "depends_on": [],
+      "blockedBy": [],
       "output_format": "期望的输出格式",
       "completion_criteria": [
         "所有引用的文件路径已验证存在",
@@ -444,6 +447,7 @@ ls -d ~/.claude/orchestrator/output/${ORCH_ID}
       "agent_output_ref": "results/task-1.json",
       "error": null,
       "error_type": "E1|E2|E3|null",
+      "error_chain": [],
       "retry_count": 0,
       "recovery_action": "retry|replan|skip|escalate|null",
       "agent_id": "后台Agent ID（用于关联通知）",
@@ -488,7 +492,7 @@ ls -d ~/.claude/orchestrator/output/${ORCH_ID}
 | `orchestrator_id`, `coordinator_pid`, `created_at`, `scenario`, `goal`, `checkpoint_mode`, `checkpoint_version`, `task_map` | STATIC | write-once（创建时写入，后续只读） |
 | `status`, `updated_at` | CORE | frequently updated（每次状态变更时写回） |
 | `tasks[].claude_task_id`, `tasks[].subject_id`, `tasks[].subject`, `tasks[].description`, `tasks[].blockedBy`, `tasks[].criticality`, `tasks[].completion_criteria` | STATIC | write-once（任务创建后不变） |
-| `tasks[].status`, `tasks[].agent_output_ref`, `tasks[].error`, `tasks[].error_type`, `tasks[].retry_count`, `tasks[].recovery_action`, `tasks[].agent_id`, `tasks[].started_at`, `tasks[].completed_at`, `tasks[].sub_steps` | CORE | frequently updated（任务运行时状态变更时写回） |
+| `tasks[].status`, `tasks[].agent_output_ref`, `tasks[].error`, `tasks[].error_type`, `tasks[].error_chain`, `tasks[].retry_count`, `tasks[].recovery_action`, `tasks[].agent_id`, `tasks[].started_at`, `tasks[].completed_at`, `tasks[].sub_steps` | CORE | frequently updated（任务运行时状态变更时写回） |
 | `hitl_gates[].gate_id`, `hitl_gates[].after_task`, `hitl_gates[].mode`, `hitl_gates[].question` | STATIC | write-once |
 | `hitl_gates[].status`, `hitl_gates[].user_response` | CORE | frequently updated |
 | `dag_snapshots[]` | STATIC | write-once per snapshot, append-only |
@@ -503,6 +507,7 @@ ls -d ~/.claude/orchestrator/output/${ORCH_ID}
 - `hitl_gates`: HITL 审批关卡列表，在指定任务完成后暂停等待用户确认
 - `agent_id`: 调度时记录后台Agent ID，用于完成通知的关联匹配
 - `error_type`: Agent 失败时的错误分级 — E1(局部错误)/E2(上游错误)/E3(结构错误)
+- `error_chain`: E2 多跳回溯的记录链，数组元素为 `{"root_task": "...", "hop": N, "task": "...", "issue": "...", "resolved": false}`
 - `retry_count`: 当前任务已重试次数
 - `recovery_action`: 采取的恢复动作 — retry/replan/skip/escalate
 - `criticality`: 任务关键度 — critical(阻断性)/normal(普通)/optional(可选，失败skip不影响DAG)
@@ -577,6 +582,12 @@ while 有未完成任务:
     ├── 就绪且未分配? → 启动 Agent
     │   → [事件] 发射 task.started 事件到 ~/.claude/orchestrator/events/<orch-id>.jsonl
     └── 超过自适应并发上限? → 等待（上限根据 §核心约束第3条的当前任务类型分布动态计算）
+
+  # 阶段2.5: 死锁检测（每 3 个调度周期执行一次）
+  若 pending 任务数 > 0 且无 running Agent 且无 unblocked 任务（所有 pending 任务的 blockedBy 均未满足）:
+    → 触发死锁告警: `[!] 疑似死锁: N个任务pending但无可调度任务 — 所有剩余任务互相阻塞`
+    → 建议恢复: escalate to user（展示阻塞链，询问是否调整依赖或跳过任务）或触发 E3 replan（重新评估 DAG 结构）
+    → 发射 orchestrator.replan 事件，记录 deadlock_detected 触发原因
 
   # 阶段3: 完成处理
   收到 Agent 完成通知
@@ -759,6 +770,8 @@ TeamCreate(team_name: "orch-<id>", description: "Orchestrator task group")
 
 #### 5.5 流式进度事件系统（P2）
 
+**checkpoint JSON 为编排状态的权威数据源（authoritative source of truth），event JSONL 为 append-only 审计日志。冲突时以 checkpoint 为准。中断恢复优先读取 checkpoint，event JSONL 仅用于进度展示和时间线重建。**
+
 Coordinator 通过文件轮询方式收集 Agent 上报的进度事件，支持实时进度展示。
 
 **事件类型（9种）：**
@@ -867,7 +880,13 @@ Agent 失败通知到达
   │     → 归类: E2 上游错误
   │     → 策略: 标记上游任务需重执行，注入 Agent 反馈
   │     → 上游自动重试（带上 Verifier 的具体 issue 列表）
-  │     → 上游也失败 (retry_count > 2) → 升级为 E3
+  │     → 上游也失败 (retry_count > 2) → 升级前继续向上游追溯（最多 2 跳）：
+│     │     每跳注入累积的 issue 列表（包含下游 Verifier 反馈 + 当前跳的验证发现）。
+│     │     若 2 跳内某上游修正成功 → 恢复正常流程（下游任务自动重试）。
+│     │     若 2 跳后仍失败 → 升级为 E3。
+│     │     回溯链记录到 tasks[].error_chain：{"root_task": "T1", "hop": 1, "task": "T2", "issue": "...", "resolved": false}
+│     │
+│     │   → 升级为 E3
   │
   └── 分类3: 2个以上 Agent 同时失败 / 同一任务重试耗尽 / DAG 前提矛盾
         → 归类: E3 结构错误
@@ -930,8 +949,9 @@ Agent 输出 → Verify Gate:
   │     → Step 3: Pairwise 淘汰赛——Round 1: A vs B; Round 2: 胜者 vs C（每轮独立评判 Agent，不携带前轮偏见）
   │     → Step 4: 返回最终胜者 + 比较理由 + 融合建议
   │     → Step 5: ⚠️ [CRITICAL] 融合步骤由独立 Writer Agent 执行（非 Verifier），避免合成幻觉（DW #69551）。融合方案 = 胜者主方案 + 次优方案的互补亮点
-  │     → Step 6: Coordinator 将最终方案 + 融合理由展示给用户 → HITL approval gate 等待人工确认
-  │     → 成本警告: 约 5x 单 Agent 成本（3 方案 + 2 评判），必须在触发前告知用户
+  │     → Step 5.5: 对融合结果执行一次 Light 验证（Schema + 完整性），确保融合 Writer 未引入新错误。若 Light 验证 fail → 退回 Writer 修正（最多 1 次）。修正后重新验证；仍 fail → 标记为 verified_with_warnings，记录到 verdict JSON，继续流程（不阻塞 HITL）
+  │     → Step 6: Coordinator 将最终方案 + 融合理由 + Light 验证结果展示给用户 → HITL approval gate 等待人工确认
+  │     → 成本警告: 约 6x 单 Agent 成本（3 方案 Agent + 2 评判 Agent + 1 融合 Writer = 实际可能更多），必须在触发前告知用户
   └── Adversarial:
         → Step 1: 产出 Agent 完成任务
         → Step 2: 3 个独立 Adversarial Verifier 并行对抗审查（各自独立上下文，refute-first 思维）
@@ -978,7 +998,7 @@ Agent 输出 → Verify Gate:
 | `deep_research` | 冲突结论/高争议议题 | Tournament | 对立观点方案（opt-in，需用户确认） |
 | `general` | Coordinator 根据风险自行判断 | 动态 | 动态 |
 
-> **Tournament/Adversarial 为 opt-in 高级模式：** Coordinator 在识别到适用场景时，必须通过 HITL gate 告知用户成本（Tournament ~5x）和风险（Adversarial 仅批判不修正），获得确认后才激活。
+> **Tournament/Adversarial 为 opt-in 高级模式：** Coordinator 在识别到适用场景时，必须通过 HITL gate 告知用户成本（Tournament ~6x）和风险（Adversarial 仅批判不修正），获得确认后才激活。
 
 **扩展检查 — 三维追问 [beta]:**
 
