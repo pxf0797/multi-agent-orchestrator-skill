@@ -42,7 +42,15 @@ triggers:
 - 执行编排元操作：mkdir/cp/echo 等（创建目录、复制交付物、写入检查点）
 
 2. **无依赖的任务必须并行** — 能同时跑的绝不串行
-3. **最大并行度 10** — 同时最多 10 个 Agent 运行
+3. **自适应并行度** — 同时运行的 Agent 数量根据任务类型动态调整：
+
+   | 任务类型 | 建议并发数 | 理由 |
+   |---------|-----------|------|
+   | 搜索/信息收集（I/O密集） | ≤12 | 瓶颈在网络，CPU占用低 |
+   | 代码开发/修改 | ≤6 | 需精确性，过多并发增加冲突风险 |
+   | 混合类型（默认） | ≤8 | 折中值，适用于不确定场景 |
+
+   物理上限：`min(16, cpu_cores - 2)`。Coordinator 根据实际任务分布选择最严格的适用值。
 4. **任务粒度适中** — 2-10 个子任务，避免过度碎片化
 5. **每个子任务单一职责** — 独立可验证，有明确输出
 6. **汇总委托** — 去重、合并、报告合成等工作交给 Writer Agent，你只做最终的摘要统计（耗时/Token/完成率）
@@ -53,29 +61,18 @@ triggers:
 
 根据用户输入关键词，判定场景类型：
 
-| 场景 | 触发关键词 | DAG 模式 |
+| 场景 | 触发关键词 | SOP 模板引用 |
 |---|---|---|
-| `code_dev` | 实现/开发/重构/写代码/修bug/修复/添加功能/写测试 | 并行开发 → 集成 → Review |
-| `deep_research` | 研究/调查/分析/报告/对比/总结/侦查/scout/调研/深入 | 并行搜索 → 并行写作 → 汇总 |
-| `deploy_verify` | 部署/上线/发布/验证/灰度 | 环境检查 → 并行验证 → 部署决策 |
-| `general` | 不匹配上述 | 动态推断依赖关系 |
+| `code_dev` | 实现/开发/重构/写代码/修bug/修复/添加功能/写测试 | `references/sop-templates.md` §1 — 软件开发 SOP |
+| `deep_research` | 研究/调查/分析/报告/对比/总结/侦查/scout/调研/深入 | `references/sop-templates.md` §2 — 研究报告 SOP |
+| `deploy_verify` | 部署/上线/发布/验证/灰度 | `references/sop-templates.md` §4 — 部署验证 SOP |
+| `general` | 不匹配上述 | `references/sop-templates.md` — SOP 选择规则（动态推断） |
 
 场景识别后，加载对应的领域 SOP 模板作为流程骨架。
 
-> **SOP 两层结构（Shell + Primitive）：** 下表是 **Shell 层**（薄），仅含场景匹配条件 + 阶段骨架 + 估算并行度 + HITL 关卡位置。场景匹配后，Coordinator 在 Step 2 确定具体 SOP 时才加载对应 **Primitive 层**（厚）——完整的阶段指南、角色定义、验证强度、反模式见 `references/sop-templates.md`。
-> 
-> **Token 优化：** Step 1 只加载本表（~100 Token），Step 2 按需加载单个 SOP 的 Primitive（~500 Token）。避免一次加载 4 个 SOP 完整细节（~2000 Token）。
-
-| 场景 | SOP 模板 | 阶段骨架 | 典型并行度 | HITL 关卡 |
-|------|---------|---------|-----------|----------|
-| `code_dev` | 软件开发 SOP | 方案自审查(Coordinator) → 架构设计(Architect) → 并行开发(Dev×N) → 并行验证(Verifier×N) → 集成测试(QA) → 集成验证(Strict) → Code Review(Reviewer) | 开发 3-10 / 验证 3-10 | 架构审批 / 测试报告审批 |
-| `deep_research` | 研究报告 SOP | 研究简报(Coordinator) → 课题拆解(Coordinator) → 并行搜索(Researcher×N) → 并行写作(Writer×N) → 汇总报告(Writer) → 报告验证(Verifier) | 搜索 3-5 / 写作 2-3 | 方向确认 / 报告审阅 |
-| `deploy_verify` | 部署验证 SOP | 环境检查(QA) → 并行功能验证(QA×N: 核心路径/边界/异常/回归) → 性能基准(QA) → 部署决策(Coordinator) | 验证 4-10 | 上线决策 |
-| `general` | 动态推断 | 轻量方案(Coordinator, 可选) → 动态拆解 → DAG调度 | 动态 | 动态 |
+> **SOP 两层结构（Shell + Primitive）：** 上表是 **Shell 层**（纯路由表），仅含场景匹配条件与 Primitive 引用。Step 2 确定场景后按需加载对应 **Primitive 层**（`references/sop-templates.md`）——含完整的阶段指南、角色定义、并行度、验证强度、HITL 位置及反模式。
 
 SOP 使用方式：
-- **Shell 层**（上表）用于 Step 1 场景匹配 — 仅含阶段骨架，Token 消耗小
-- **Primitive 层**（`references/sop-templates.md`）在 Step 2 确定场景后按需加载 — 含完整执行细节
 - SOP 定义"这个领域通常怎么做"，提供流程骨架
 - Coordinator 根据具体目标填充"这次具体做什么"，生成具体 Task
 - SOP 阶段间的依赖关系自动转化为 Task blockedBy 链
@@ -325,6 +322,11 @@ Coordinator 基于需求复杂度做快速心智评估（非正式拆解，只�
 
 > **code_dev 场景：** 任务拆解以 Step 1.5 确认的方案为输入。Architect Agent 的 prompt 中注入 `[Design Context]` 段（方案摘要），确保架构设计与前期方案一致。
 
+> **⚡ Pipeline 启发式：** 当任务拆解出现 ≥5 个同质无依赖任务时（共享相同角色+模型），
+> Coordinator 应优先使用 **Pipeline 扇出模式**：创建单个 `pipeline-<name>` 聚合任务，
+> 而非逐个创建 N 个独立 DAG 节点。详见 `references/pipeline-pattern.md`。
+> 注意：Pipeline 是推荐策略，Coordinator 保留根据实际情况逐任务拆解的最终判断权。
+
 ### Step 3: 生成 DAG 并创建 Task
 
 用 TaskCreate 创建所有子任务。识别依赖 → 用 `addBlockedBy` 设置。
@@ -511,7 +513,22 @@ ls -d ~/.claude/orchestrator/output/${ORCH_ID}
 调度循环前置步骤:
   → 确保 ~/.claude/orchestrator/events/<orch-id>.jsonl 已初始化
   → 初始化 seq_tracker 游标（echo 0 > seq_tracker/<orch-id>.seq）
-  
+
+  # === Coordinator 边界守护（每 turn 执行）===
+  → 自查 A — 越界检测: 
+      本 turn 是否执行了 Read/Edit/Write/Grep/Glob？（编排元操作 mkdir/cp/echo 除外）
+      Yes → ⚠️ 违规。记录到 events/<orch-id>.jsonl，下不为例。若已执行了写操作，在下一个 Agent prompt 中注入操作结果的摘要。
+  → 自查 B — 跳过补偿:
+      上次自查后是否有违规被跳过的操作？
+      Yes → 在本 turn 派发的 Agent prompt 末端补入"补偿上下文"段，包含被跳过的信息。
+  → 自查 C — 元数据合规:
+      当前所有状态决策的依据是什么？
+      必须是: 检查点文件元数据 / Verifier JSON 顶层字段(pass/score) / Agent 完成通知摘要
+      不能是: 对 Agent 输出文件的直接全文读取和分析
+  → 自查 D — 汇总合规:
+      本 turn 的统计数据是否来自 Agent 完成通知中的结构化摘要？
+      不能来自：自行 read + parse Agent 输出文件
+
 while 有未完成任务:
   # 阶段1: HITL 检查
   for 每个 hitl_gate with status=pending:
@@ -534,7 +551,7 @@ while 有未完成任务:
     ├── 已在运行中? → 跳过（等 Agent 完成通知）
     ├── 就绪且未分配? → 启动 Agent
     │   → [事件] 发射 task.started 事件到 ~/.claude/orchestrator/events/<orch-id>.jsonl
-    └── 超过并发上限(10)? → 等待
+    └── 超过自适应并发上限? → 等待（上限根据 §核心约束第3条的当前任务类型分布动态计算）
 
   # 阶段3: 完成处理
   收到 Agent 完成通知
@@ -709,6 +726,8 @@ TeamCreate(team_name: "orch-<id>", description: "Orchestrator task group")
 > **注意：** model 参数值必须使用 Agent 工具支持的合法枚举值（当前：`sonnet` / `opus` / `haiku` / `fable`），具体映射取决于运行环境。在非 Anthropic 环境中，这些枚举值会映射到环境对应的实际模型。
 
 在 Agent prompt 中通过 `model` 参数指定。
+
+**并发度联动：** 选择模型时应同时考虑并发约束。haiku 类小模型适合高并发（12），sonnet 类中模型适合中等并发（8），opus 类大模型因 Token 消耗大建议低并发（≤6）。
 
 #### 5.5 流式进度事件系统（P2）
 
@@ -1143,6 +1162,7 @@ fi
 | [code-dev-dag.md](references/code-dev-dag.md) | 代码开发 DAG 模板 | stable |
 | [deep-research-dag.md](references/deep-research-dag.md) | 深度研究 DAG 模板 | stable |
 | [general-dag.md](references/general-dag.md) | 通用 DAG 模板 | stable |
+| [pipeline-pattern.md](references/pipeline-pattern.md) | Pipeline 扇出模式 — 触发条件/适用场景/不适用场景 | beta |
 | [dependency-dsl.md](references/dependency-dsl.md) | 声明式 DSL 语法参考 | planned |
 | [debugging-meta-patterns.md](references/debugging-meta-patterns.md) | 调试元模式 — 假设追踪/根因三角定位/具体优先/三维扩展 | beta |
 | [glossary.md](references/glossary.md) | 共享词汇表 — orchestrator 核心术语精确定义（11 条目） | beta |
