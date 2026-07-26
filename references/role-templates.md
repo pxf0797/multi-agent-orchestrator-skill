@@ -1,6 +1,6 @@
 # 角色模板库
 
-预置 7 种角色模板，借鉴 CrewAI 的 `role + goal + backstory` 三段式定义。Coordinator 调度时根据任务类型匹配角色，注入 Agent prompt。
+预置 9 种角色模板，借鉴 CrewAI 的 `role + goal + backstory` 三段式定义。Coordinator 调度时根据任务类型匹配角色，注入 Agent prompt。
 
 ## 使用方式
 
@@ -157,7 +157,7 @@ constraints:
 model_prefer: sonnet  # Strict 模式升级为 opus
 ```
 
-## 7a. Adversarial Verifier（对抗验证者）⭐ 新增
+## 7a. Adversarial Verifier（对抗验证者）[beta]
 
 ```yaml
 role: "对抗验证专家（Adversarial Verifier）"
@@ -198,7 +198,7 @@ Adversarial Verifier 仅在 **Adversarial 验证模式**激活时使用（见 sk
 
 ---
 
-## 8. Trace Agent（数据追踪者）⭐ 新增
+## 8. Trace Agent（数据追踪者）[beta]
 
 ```yaml
 role: "数据追踪调试专家"
@@ -242,8 +242,8 @@ Coordinator 在以下条件**任一满足**时，**必须**调度 Trace Agent �
 | 写作/整理/报告 | Writer |
 | 审查/检查/审计 | Reviewer |
 | 质量验证/门禁 | Verifier |
-| 对抗审查/安全审计 | **Adversarial Verifier** ⭐ |
-| 数据追踪/根因定位/跑一下试试 | **Trace Agent** ⭐ |
+| 对抗审查/安全审计 | **Adversarial Verifier** [beta] |
+| 数据追踪/根因定位/跑一下试试 | **Trace Agent** [beta] |
 
 ## 自定义角色
 

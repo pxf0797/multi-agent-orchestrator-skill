@@ -160,7 +160,7 @@ rmdir "$(dirname "$TEST_SEQ")" 2>/dev/null || true
 
 # ── Test 6: Role template parsing ──
 echo "--- 6. Role Templates ---"
-check "role-templates.md has 7 roles" '[ $(grep -c "^## [0-9]\." "$SKILL_DIR/references/role-templates.md") -ge 7 ]'
+check "role-templates.md has 9 roles" '[ $(grep -cE "^## [0-9]" "$SKILL_DIR/references/role-templates.md") -ge 9 ]'
 
 # ── Test 7: SOP template parsing ──
 echo "--- 7. SOP Templates ---"

@@ -20,6 +20,7 @@
 |---|---|---|
 | **代码开发** | 关键词：实现/开发/重构/写代码/修bug/添加功能 | 并行开发模块 → 汇总 → Code Review |
 | **深度研究** | 关键词：研究/调查/分析/报告/对比/总结 | 并行搜索 → 并行写作 → 汇总报告 |
+| **部署验证** | 关键词：部署/上线/发布/验证/灰度 | 环境检查 → 并行功能验证 → 性能基准 → 部署决策 |
 | **通用任务** | 不匹配上述模式 | Coordinator 动态推断 DAG 结构 |
 
 ### 1.3 与 Managed Agents 四层架构的对照
@@ -114,7 +115,7 @@ Coordinator 是一个 **只拆任务、不干具体活** 的指挥官。它的 P
 ```
 Step 1: 场景识别
    ├── 分析用户输入的关键词
-   ├── 判断属于 [代码开发|深度研究|通用任务]
+   ├── 判断属于 [代码开发|深度研究|部署验证|通用任务]
    └── 选择对应的 DAG 模板
 
 Step 2: 任务拆解
@@ -129,7 +130,7 @@ Step 3: 生成 DAG
 
 Step 4: 调度执行
    ├── 识别所有 blockedBy 为空的就绪任务
-   ├── 并行 spawn Agent（max 10 并发）
+   ├── 并行 spawn Agent（自适应并发：搜索 ≤12 / 开发 ≤6 / 混合 ≤8，物理上限 min(16, cpu-2)）
    ├── 每个 Agent 完成 → TaskUpdate(status: completed) → 解锁下游任务
    └── 循环直到所有任务完成或失败
 
@@ -153,6 +154,10 @@ Step 5: 结果汇总
 通用任务:
   不匹配上述特征时
   DAG: Coordinator 动态分析依赖关系后决定
+
+部署验证特征:
+  关键词: 部署|上线|发布|验证|灰度|回归
+  DAG: 环境检查 → 并行功能验证 → 性能基准 → 部署决策
 ```
 
 ---
@@ -225,7 +230,43 @@ Coordinator 动态分析任务依赖，不套用固定模板。原则：
 
 - **无依赖 → 并行**：能同时跑的绝不串行
 - **有依赖 → blockedBy**：上游完成才触发下游
-- **最大并行度 10**：避免 API 速率限制
+- **自适应并行度**：根据任务类型动态调整（搜索 ≤12 / 开发 ≤6 / 混合 ≤8），详见 SKILL.md 核心约束
+
+### 4.4 部署验证 DAG
+
+```
+              ┌──────────────┐
+              │  Coordinator  │
+              │  拆解验证任务  │
+              └──────┬───────┘
+                     │
+                     ▼
+            ┌───────────────┐
+            │   环境检查     │  ← QA Agent
+            │   (Agent)     │
+            └───────┬───────┘
+                    │
+       ┌────────────┼────────────┐
+       ▼            ▼            ▼
+┌───────────┐ ┌───────────┐ ┌───────────┐
+│ 核心路径   │ │ 边界条件   │ │ 异常场景   │  ← 并行功能验证
+│ 验证      │ │ 验证      │ │ 验证      │
+│ (Agent)   │ │ (Agent)   │ │ (Agent)   │
+└─────┬─────┘ └─────┬─────┘ └─────┬─────┘
+      └──────────────┼──────────────┘
+                     │
+                     ▼
+            ┌───────────────┐
+            │  性能基准测试  │  ← QA Agent
+            │   (Agent)     │
+            └───────┬───────┘
+                    │
+                    ▼
+            ┌───────────────┐
+            │  部署决策      │  ← Coordinator (HITL)
+            │ (Coordinator) │
+            └───────────────┘
+```
 
 ---
 
@@ -296,9 +337,9 @@ Teams 禁用标记: ~/.claude/orchestrator/teams_disabled
 
 | 参数 | 值 | 说明 |
 |---|---|---|
-| 最大并行 Agent | 10 | 避免 API 速率限制 |
+| 最大并行 Agent | 自适应（搜索≤12/开发≤6/混合≤8） | 详见 SKILL.md 核心约束第3条 |
 | Agent 超时 | 600s | 单个 Agent 最长执行时间 |
-| 重试次数 | 1 | 失败后自动重试一次 |
+| 重试次数 | 3 | E1 指数退避重试，最多 3 次 |
 
 ### 5.5 模型分配策略（Token Efficiency）
 
@@ -342,7 +383,7 @@ Coordinator:     大模型（opus） — 复杂推理和规划
   "scenario": "code_dev | deep_research | general",
   "goal": "用户原始输入",
   "checkpoint_version": 2,
-  "checkpoint_mode": "full | incremental | delta | compact",
+  "checkpoint_mode": "full | incremental | compact",
   "checkpoint_sequence": 4,
   "dag": {
     "tasks": [
@@ -408,11 +449,12 @@ Coordinator:     大模型（opus） — 复杂推理和规划
    - 开销：小（~1-5KB），高频保存
    - 存储：checkpoints/<task-id>/snapshots/step-NNN.json
 
-3. Delta Checkpoint（变更级）
+3. Delta Checkpoint（变更级）[planned]
    - 触发：任何状态字段变更时
    - 内容：仅变更的字段 diff（JSON Patch 格式）
    - 开销：极小（~100-500B），最高频
    - 用途：精确恢复到任意时间点
+   - 状态：planned（远期目标，当前不在 checkpoint_mode 枚举中）
 
 保存频率：
   - Delta：每次子步骤状态变更（实时）
@@ -547,7 +589,7 @@ Orchestrator Skill 定位为高层调度中枢，与以下主流多 Agent 框架
 | **依赖声明** | blockedBy + DSL（计划中） | `add_edge`/`add_conditional_edge` | `@listen`/`@router` 装饰器 | 固定阶段顺序 | 隐式（对话驱动） | Agent Card 声明 |
 | **持久化** | 文件级 JSON 检查点 | SQLite/PostgreSQL 自动 Checkpoint | 无内置（依赖 LangSmith） | 无内置 | 无内置 | 无内置 |
 | **检查点粒度** | 子步骤级（计划中） | 每步自动 Checkpoint | — | — | — | — |
-| **检查点模式** | 3 种（计划中：Full/Incremental/Delta） | 3 种（Full/Incremental/Delta） | — | — | — | — |
+| **检查点模式** | 4 种：Full/Incremental/Compact（stable）；Delta（planned） | 3 种（Full/Incremental/Delta） | — | — | — | — |
 | **断点续传** | 任务级（当前）/ 子步骤级（计划中） | 原生支持（任意 SuperStep） | 无 | 无 | 无 | 无 |
 | **加密持久化** | 无（本地文件） | AES 加密可选 | — | — | — | — |
 | **HITL 中断** | `hitl_gates`（计划中） | `interrupt()` 原生支持 | `human_input=True` 标记 | 无内置 | 无内置 | 无内置 |
@@ -938,7 +980,7 @@ sop:
 | 阶段 | 角色 | 并行度 | 输出 | HITL |
 |---|---|---|---|---|
 | 1. 需求分析与拆解 | Architect | 1 | 模块划分方案 | yes |
-| 2. 并行模块开发 | Developer | max(10) | 各模块代码+测试 | no |
+| 2. 并行模块开发 | Developer | max(6) | 各模块代码+测试 | no |
 | 3. 依赖模块开发 | Developer | partial | 依赖模块代码 | no |
 | 4. 集成测试 | QA | 1 | 测试报告 | yes |
 | 5. 代码审查 | Reviewer | 1 | 审查报告 | no |
@@ -948,7 +990,7 @@ sop:
 | 阶段 | 角色 | 并行度 | 输出 | HITL |
 |---|---|---|---|---|
 | 1. 课题拆解 | Researcher | 1 | 搜索维度列表 | yes |
-| 2. 并行信息搜集 | Researcher | max(10) | 各维度原始资料 | no |
+| 2. 并行信息搜集 | Researcher | max(12) | 各维度原始资料 | no |
 | 3. 分类整理 | Writer | max(3) | 分类整理稿 | no |
 | 4. 报告合成 | Writer | 1 | 完整报告 | yes |
 | 5. 质量审核 | Reviewer | 1 | 审核意见 | no |
@@ -969,7 +1011,7 @@ sop:
 | 阶段 | 角色 | 并行度 | 输出 | HITL |
 |---|---|---|---|---|
 | 1. 环境检查 | QA | 1 | 环境检查报告 | no |
-| 2. 并行功能验证 | QA | max(10) | 各功能验证结果 | no |
+| 2. 并行功能验证 | QA | max(8) | 各功能验证结果 | no |
 | 3. 性能基准测试 | QA | 1 | 性能报告 | no |
 | 4. 部署决策 | Coordinator | 1 | 上线/回滚建议 | yes |
 
@@ -1134,7 +1176,7 @@ DAG: 测试 → 性能基准 → [HITL Gate — Approval] → 部署
 | Teams fire-and-forget 不可靠 | Workers 仅发 idle_notification，不回传结果 | 直调 Agent 为默认模式，Teams 仅用于双向交互场景 |
 | 无云端 Session Store | 检查点仅本地可用 | 归档到 iCloud 目录 |
 | 文件级持久化（非 Redis） | 恢复粒度粗（任务级，非事件级） | 增量检查点将粒度提升至子步骤级（Level 2） |
-| API 速率限制 | 过多并行 Agent 可能触发限流 | 最大并行度 10 |
+| API 速率限制 | 过多并行 Agent 可能触发限流 | 自适应并行度（搜索≤12/开发≤6/混合≤8） |
 | 执行进度不透明 | 用户无法实时感知 Agent 进度 | 中期规划流式进度反馈（借鉴 LangGraph 7 种流模式） |
 | 无加密持久化 | 检查点明文存储，敏感信息可能泄露 | 远期规划 AES 加密（借鉴 LangGraph DeltaChannel） |
 
@@ -1147,13 +1189,13 @@ DAG: 测试 → 性能基准 → [HITL Gate — Approval] → 部署
 | 任务 | 产出 | 优先级 | 状态 |
 |---|---|---|---|
 | Skill 骨架 + Coordinator Prompt | `SKILL.md` 主文件 | P0 | ✅ |
-| DAG 模板（3 种场景） | `references/*-dag.md` | P0 | ✅ (code-dev + deep-research + general) |
+| DAG 模板（4 种场景） | `references/*-dag.md` | P0 | ✅ (code-dev + deep-research + deploy-verify + general) |
 | 直调 Agent 调度（默认模式） | Skill 调度逻辑 | P0 | ✅ |
 | 基础检查点脚本（任务级，Full Checkpoint） | SKILL.md §4 + `references/checkpoint-guide.md` | P0 | ✅ |
 | 环境检测 + Teams 禁用标记 | SKILL.md §5.1 | P0 | ✅ |
 | Agent 提示词模板 | `templates/progress-injection.md` | P1 | ✅ |
-| 基础角色模板（全部 8 个角色） | `references/role-templates.md` | P1 | ✅ |
-| 基础 SOP 模板（4 个领域） | `references/sop-templates.md` | P1 | ✅ |
+| 基础角色模板（全部 9 个角色） | `references/role-templates.md` | P1 | ✅ |
+| 基础 SOP 模板（5 个领域） | `references/sop-templates.md` | P1 | ✅ |
 | HITL 工作流参考 | `references/hitl-workflow.md` | P1 | ✅ |
 | 快速入门指南 | `references/quick-start.md` | P1 | ✅ |
 | workflow-manager 配套集成 | SKILL.md §5.9 | P1 | ✅ |
@@ -1167,10 +1209,10 @@ DAG: 测试 → 性能基准 → [HITL Gate — Approval] → 部署
 | 增量检查点 + 子步骤级恢复（Level 2） | `references/checkpoint-guide.md` §增量检查点 | P0 | ✅ 设计完成，待实现 |
 | HITL v1：关键阶段审批门 | `references/hitl-workflow.md` | P0 | ✅ |
 | 声明式依赖 DSL v1：JSON/YAML 结构化定义 | `dsl/dependency-dsl.md` | P1 | ⏳ |
-| 角色模板库完善（全部 8 个角色） | `references/role-templates.md` | P1 | ✅ |
-| SOP 模板库完善（4 个领域 SOP） | `references/sop-templates.md` | P1 | ✅ |
+| 角色模板库完善（全部 9 个角色） | `references/role-templates.md` | P1 | ✅ |
+| SOP 模板库完善（5 个领域 SOP） | `references/sop-templates.md` | P1 | ✅ |
 | 流式进度反馈 v1：检查点轮询 + 摘要展示 | `templates/progress-injection.md` + SKILL.md §5.5 | P1 | ✅ |
-| 端到端集成测试（3 个场景） | 测试脚本 | P0 | ⏳ |
+| 端到端集成测试（4 个场景） | 测试脚本 | P0 | ⏳ |
 | HITL v2：三种模式（审批/输入/审阅） | `references/hitl-workflow.md` | P2 | ✅ |
 
 **里程碑 M2**：具备完整的角色模板、SOP 模板、HITL 审批、增量检查点恢复能力，任务可靠性显著提升。

@@ -126,7 +126,7 @@
 
 ## 下一步
 
-- **角色配置**: 查看 [role-templates.md](role-templates.md) 了解 7 种角色定义
-- **流程定制**: 查看 [sop-templates.md](sop-templates.md) 了解 4 个领域 SOP
+- **角色配置**: 查看 [role-templates.md](role-templates.md) 了解 9 种角色定义
+- **流程定制**: 查看 [sop-templates.md](sop-templates.md) 了解 5 个领域 SOP
 - **人工审批**: 查看 [hitl-workflow.md](hitl-workflow.md) 了解 HITL 三种模式
 - **多阶段项目**: 使用 [workflow-manager](https://github.com/pxf0797/workflow-manager-skill) skill 串联多个 Orchestrator Run

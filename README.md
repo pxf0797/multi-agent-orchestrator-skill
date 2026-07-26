@@ -21,10 +21,10 @@ User: "Research X, build Y, compare Z"
         Result Aggregation
 ```
 
-1. **Scene Recognition** — identifies `code_dev`, `deep_research`, or `general` tasks
+1. **Scene Recognition** — identifies `code_dev`, `deep_research`, `deploy_verify`, or `general` tasks
 2. **Task Decomposition** — breaks goals into 2-10 single-responsibility subtasks
 3. **DAG Generation** — creates dependency graph with `blockedBy`
-4. **Parallel Dispatch** — launches agents concurrently (max 10)
+4. **Parallel Dispatch** — launches agents concurrently (adaptive: search <=12 / code <=6 / mixed <=8)
 5. **Result Aggregation** — merges, deduplicates, and presents structured output
 
 ## Key Features
@@ -34,7 +34,7 @@ User: "Research X, build Y, compare Z"
 - **Checkpoint persistence** — resume interrupted tasks from any point
 - **Dual-mode dispatch** — direct Agent calls (default) or Agent Teams (for worker-to-worker communication)
 - **Token-efficient model allocation** — Coordinator (Opus/Pro), Dev Agent (Sonnet/Flash), Search (Haiku/Flash)
-- **3 scenario templates** — code development, deep research, and general-purpose DAG patterns
+- **4 scenario templates** — code development, deep research, deploy-verify, and general-purpose DAG patterns
 
 ## File Structure
 

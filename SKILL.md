@@ -383,27 +383,23 @@ Coordinator 使用 JSON 结构声明任务计划（便于验证和人工调整�
 
 Coordinator 将此 JSON 解析后，逐条调用 TaskCreate + 设置 blockedBy，生成可执行的 DAG。也可直接使用自由文本描述任务拆解方案。
 
-**Task ID 映射（关键步骤）：** DAG 中的逻辑 ID（`"1"`, `"2"`）与 `TaskCreate` 返回的 Claude Code 整数 Task ID 是两套体系。**必须先调用 TaskCreate，记录返回的实际 ID，再以此设置 blockedBy**：
+**Task ID 体系（统一 ID 模式）：** 使用语义字符串作为 TaskCreate 的 subject（如 `"T-search-dimA"`），同时用作依赖引用键。这是当前的**主要方式**：
 
 ```
 操作顺序：
-1. TaskCreate(subject: "T1: 搜索维度A") → 返回 claude_task_id: "5"
-2. TaskCreate(subject: "T2: 搜索维度B") → 返回 claude_task_id: "6"  
-3. TaskCreate(subject: "T3: 汇总报告") → 返回 claude_task_id: "7"
-4. 在检查点中记录映射: {"T1": "5", "T2": "6", "T3": "7"}
-5. TaskUpdate(taskId: "7", addBlockedBy: ["5", "6"])  ← 使用 Claude ID，不是 T-ID
+1. TaskCreate(subject: "T-search-dimA: 搜索维度A") → 返回 claude_task_id: "5"
+2. TaskCreate(subject: "T-search-dimB: 搜索维度B") → 返回 claude_task_id: "6"
+3. TaskCreate(subject: "T-summary: 汇总报告") → 返回 claude_task_id: "7"
+4. 自动建立 task_map: {"T-search-dimA": "5", "T-search-dimB": "6", "T-summary": "7"}
+5. TaskUpdate(taskId: "7", addBlockedBy: ["5", "6"])  ← 通过 task_map 解析语义引用为 Claude ID
 ```
 
-**检查点中同时记录两个 ID**：`claude_task_id` 存 TaskCreate 返回的整数 ID（用于 blockedBy/TaskUpdate），DAG 快照中保留逻辑 T-ID（用于人类可读）。
+优势：人类可读的依赖关系（`blockedBy: ["T-search-dimA"]` 比 `["5","6"]` 更直观），减少手动映射错误。
 
-> **🆕 统一 ID 模式（推荐）：** 使用语义字符串作为 TaskCreate 的 subject（如 `"T-search-dimA"`），
-> 同时用作依赖引用键。创建任务时自动建立 `task_map: {subject → claude_id}` 反向索引。
-> 设置 blockedBy 时：TaskUpdate(addBlockedBy: [task_map["T-search-dimA"], task_map["T-search-dimB"]])。
-> 
-> 优势：人类可读的依赖关系（blockedBy: ["T-search-A"] 比 ["5","6"] 更直观），
-> 减少逻辑ID到Claude ID的手动映射错误。
-> 
-> 向后兼容：纯数字ID仍然可用，Coordinator 自动检测 subject 格式选择模式。
+> **已废弃 — 逻辑数字 ID（向后兼容，未来版本将移除）：**
+> 旧方案使用纯数字逻辑 ID（`"1"`, `"2"`）并在检查点中手动维护映射表 `{"T1": "5", "T2": "6", "T3": "7"}`。
+> Coordinator 检测到纯数字 subject 格式时自动切换到旧模式，但会发出废弃警告。
+> 新编排应统一使用语义 subject ID。
 
 优势：结构化、可人工审查修改、可保存为模板复用。
 
@@ -425,7 +421,6 @@ ls -d ~/.claude/orchestrator/output/${ORCH_ID}
 
 ```json
 {
-  // === STATIC (write-once) === — 仅创建时写入，后续只读
   "orchestrator_id": "orch-YYYYMMDD-HHMMSS-<pid>",
   "coordinator_pid": "<pid>",
   "created_at": "ISO时间戳",
@@ -434,14 +429,10 @@ ls -d ~/.claude/orchestrator/output/${ORCH_ID}
   "checkpoint_mode": "full|incremental|compact",
   "checkpoint_version": 2,
   "task_map": {"T-search-dimA": "5", "T-search-dimB": "6"},
-
-  // === CORE (frequently updated) === — 每次状态变更时立即写回
   "status": "in_progress|completed|failed",
   "updated_at": "ISO时间戳",
-
   "tasks": [
     {
-      // === STATIC (task identity) ===
       "claude_task_id": "1",
       "subject_id": "T-search-dimA",
       "subject": "...",
@@ -449,8 +440,6 @@ ls -d ~/.claude/orchestrator/output/${ORCH_ID}
       "blockedBy": [],
       "criticality": "critical|normal|optional",
       "completion_criteria": ["可验证的完成条件"],
-
-      // === CORE (task runtime state) ===
       "status": "pending|in_progress|completed|failed",
       "agent_output_ref": "results/task-1.json",
       "error": null,
@@ -472,17 +461,14 @@ ls -d ~/.claude/orchestrator/output/${ORCH_ID}
   ],
   "hitl_gates": [
     {
-      // === STATIC ===
       "gate_id": "approval-1",
       "after_task": "3",
       "mode": "approval|input|review",
       "question": "请确认后继续",
-      // === CORE ===
       "status": "pending|approved|rejected",
       "user_response": null
     }
   ],
-  // === STATIC (write-once per snapshot, append-only) ===
   "dag_snapshots": [
     {
       "version": 1,
@@ -494,6 +480,18 @@ ls -d ~/.claude/orchestrator/output/${ORCH_ID}
   ]
 }
 ```
+
+**检查点字段分类（类别 + 写入策略）：**
+
+| 字段 | 类别 | 写入策略 |
+|------|------|---------|
+| `orchestrator_id`, `coordinator_pid`, `created_at`, `scenario`, `goal`, `checkpoint_mode`, `checkpoint_version`, `task_map` | STATIC | write-once（创建时写入，后续只读） |
+| `status`, `updated_at` | CORE | frequently updated（每次状态变更时写回） |
+| `tasks[].claude_task_id`, `tasks[].subject_id`, `tasks[].subject`, `tasks[].description`, `tasks[].blockedBy`, `tasks[].criticality`, `tasks[].completion_criteria` | STATIC | write-once（任务创建后不变） |
+| `tasks[].status`, `tasks[].agent_output_ref`, `tasks[].error`, `tasks[].error_type`, `tasks[].retry_count`, `tasks[].recovery_action`, `tasks[].agent_id`, `tasks[].started_at`, `tasks[].completed_at`, `tasks[].sub_steps` | CORE | frequently updated（任务运行时状态变更时写回） |
+| `hitl_gates[].gate_id`, `hitl_gates[].after_task`, `hitl_gates[].mode`, `hitl_gates[].question` | STATIC | write-once |
+| `hitl_gates[].status`, `hitl_gates[].user_response` | CORE | frequently updated |
+| `dag_snapshots[]` | STATIC | write-once per snapshot, append-only |
 
 **检查点写入原则（防崩溃丢失）：** 检查点采用读-改-写模式。每次 Agent 完成或状态变更后**立即写回**（不攒批），将崩溃丢失窗口缩到最小。Write 工具单次写入是原子的（整文件替换），但读写之间若崩溃则该周期变更丢失——恢复时以检查点为准，Agent 的实际输出文件仍然存在，重跑代价为 1 个 Task。
 
@@ -543,19 +541,18 @@ ls -d ~/.claude/orchestrator/output/${ORCH_ID}
   → 初始化 seq_tracker 游标（echo 0 > seq_tracker/<orch-id>.seq）
 
   # === Coordinator 边界守护（每 turn 执行）===
-  → 自查 A — 越界检测: 
-      本 turn 是否执行了 Read/Edit/Write/Grep/Glob？（编排元操作 mkdir/cp/echo 除外）
-      Yes → ⚠️ 违规。记录到 events/<orch-id>.jsonl，下不为例。若已执行了写操作，在下一个 Agent prompt 中注入操作结果的摘要。
-  → 自查 B — 跳过补偿:
-      上次自查后是否有违规被跳过的操作？
-      Yes → 在本 turn 派发的 Agent prompt 末端补入"补偿上下文"段，包含被跳过的信息。
-  → 自查 C — 元数据合规:
-      当前所有状态决策的依据是什么？
-      必须是: 检查点文件元数据 / Verifier JSON 顶层字段(pass/score) / Agent 完成通知摘要
-      不能是: 对 Agent 输出文件的直接全文读取和分析
-  → 自查 D — 汇总合规:
-      本 turn 的统计数据是否来自 Agent 完成通知中的结构化摘要？
-      不能来自：自行 read + parse Agent 输出文件
+  → 单检查 — metadata-only 合规:
+      本轮是否违反了 metadata-only 规则？
+      （即：是否执行了 Read/Edit/Write/Grep/Glob 读取 Agent 输出文件内容，
+       或从非结构化来源自行解析统计数据？编排元操作 mkdir/cp/echo 除外。）
+      Yes → ⚠️ 违规。记录到 events/<orch-id>.jsonl。
+            若为读操作：下不为例。
+            若为写操作：在下一个 Agent prompt 中注入操作结果的摘要。
+            若有被跳过的信息：在 Agent prompt 末端补入"补偿上下文"段。
+
+      > ⚠️ 实用性说明：边界守护旨在防止 Coordinator 退化为亲自执行者。
+      > 若自查消耗超过编排本身 token 的 ~5%，可降级为"仅读操作检测"（跳过统计合规检查）。
+      > 长期方案：通过架构约束（Coordinator 物理上无法访问 Agent 输出文件）替代自查。
 
 while 有未完成任务:
   # 阶段1: HITL 检查
@@ -659,10 +656,10 @@ HITL Gate 完整配置结构：
   写作/整理 → Writer
   审查/检查 → Reviewer
   质量验证 → Verifier（角色模板: role+goal+backstory+skills+constraints+output）
-  数据追踪/根因定位 → Trace Agent（用真实数据逐行追踪，不静态分析）⭐ 新增
+  数据追踪/根因定位 → Trace Agent（用真实数据逐行追踪，不静态分析）[beta]
 ```
 
-**Trace Agent 分发规则 (⭐ 新增):**
+**Trace Agent 分发规则 [beta]:**
 Coordinator 在以下条件**任一满足**时，**必须**调度 Trace Agent 而非普通分析 Agent:
 - (a) 同一问题修复 ≥2 次仍未解决
 - (b) Bug 涉及时间比较、数值比较、或字符串比较
@@ -696,7 +693,7 @@ Trace Agent 与普通分析 Agent 的区别:
 ```
 
 **进度上报注入（P2 流式进度）：**
-> **术语：** P2 为第 2 版进度系统（基于 JSONL 事件流 + seq_tracker 游标），P1 为旧版文本进度行（仍保留向后兼容）。P2 新增 sub-step 事件、心跳、output_preview 等 8 种事件类型。
+> **术语：** P2 为第 2 版进度系统（基于 JSONL 事件流 + seq_tracker 游标），P1 为旧版文本进度行（仍保留向后兼容）。P2 新增 sub-step 事件、心跳、output_preview 等 9 种事件类型。
 调度时，从 `~/.claude/orchestrator/templates/progress-injection.md` 加载进度上报模板，嵌入 Agent prompt 末尾。模板指示 Agent 在以下时机通过 Bash 工具上报进度：
 ```
 每个子步骤开始时:
@@ -763,7 +760,7 @@ TeamCreate(team_name: "orch-<id>", description: "Orchestrator task group")
 
 Coordinator 通过文件轮询方式收集 Agent 上报的进度事件，支持实时进度展示。
 
-**事件类型（8种）：**
+**事件类型（9种）：**
 
 | 事件 | 发射者 | 频率 | 用途 |
 |------|--------|------|------|
@@ -772,6 +769,7 @@ Coordinator 通过文件轮询方式收集 Agent 上报的进度事件，支持�
 | `task.heartbeat` | Agent | 每30秒 | 证明Agent未卡死 |
 | `task.output_preview` | Agent | 产生中间输出时 | 200字输出预览 |
 | `task.completed` | Coordinator | Agent完成时 | 耗时/Token/输出路径 |
+| `task.failed` | Coordinator | Agent失败时 | 错误原因/阶段/重试建议（补充故障时间线） |
 | `checkpoint.saved` | Coordinator | 检查点写入时 | 持久化确认 |
 | `orchestrator.phase` | Coordinator | SOP阶段切换时 | 高层流程进展 |
 | `orchestrator.replan` | Coordinator | DAG调整时 | 记录调整原因(Split/Merge/Append)和变更详情 |
@@ -882,10 +880,10 @@ Agent 失败通知到达
 
 | 信号 | 归类为 |
 |------|-------|
-| Agent 输出包含 "Error" / "timed out" / "tool call failed" | E1 |
+| Agent 退出码非零 / TaskCreate 返回 success=false / Agent 显式输出失败声明（`"status": "failed"`） | E1 |
 | Verifier 返回 pass=false，issue 指向"缺少 XX 输入" | E2 |
 | Agent 报 "file not found" / 引用前置任务输出失败 | E2 |
-| 同一阶段 ≥50% Agent 同时失败 | E3 |
+| 同一 DAG 深度、同调度周期内启动的 task ≥50% 同时失败 | E3 |
 | 同一 Task 重试 3 次全部失败 | E3 |
 | Agent 输出表明前提假设错误（"这个 API 不存在"） | E3 |
 
@@ -981,14 +979,14 @@ Agent 输出 → Verify Gate:
 
 > **Tournament/Adversarial 为 opt-in 高级模式：** Coordinator 在识别到适用场景时，必须通过 HITL gate 告知用户成本（Tournament ~5x）和风险（Adversarial 仅批判不修正），获得确认后才激活。
 
-**扩展检查 — 三维追问 (⭐ 新增):**
+**扩展检查 — 三维追问 [beta]:**
 
 每次 bug 修复完成后，Coordinator 必须执行三个追问，可委托给 Agent:
 1. **横向**: "还有哪些函数/模块有同样的代码模式？" → 派 Agent 搜索相似模式（如 `append`/`extend`/`+=`）
 2. **纵向**: "这个修复会影响哪些下游/上游逻辑？" → 派 Agent 追踪调用链
 3. **边界维**: "所有边界条件都覆盖了吗？" → 参照 `references/debugging-meta-patterns.md` 元模式 4
 
-**假设验证 (⭐ 新增):**
+**假设验证 [beta]:**
 
 每次 Agent 产出后，Coordinator 追问: "这个产出依赖什么假设？在运行时这些假设还成立吗？"。参照 `references/debugging-meta-patterns.md` 元模式 1。
 
@@ -1224,8 +1222,8 @@ fi
 | 文档 | 内容 | 成熟度 |
 |------|------|--------|
 | [quick-start.md](references/quick-start.md) | 快速入门：3 个完整示例 + 命令速查 | stable |
-| [role-templates.md](references/role-templates.md) | 8 种角色模板（Architect/Developer/QA/Researcher/Writer/Reviewer/Verifier/Trace Agent） | stable |
-| [sop-templates.md](references/sop-templates.md) | 4 个领域 SOP — Primitive 层（Shell 层见 skill.md Step 1） | stable |
+| [role-templates.md](references/role-templates.md) | 9 种角色模板（Architect/Developer/QA/Researcher/Writer/Reviewer/Verifier/Adversarial Verifier/Trace Agent） | stable |
+| [sop-templates.md](references/sop-templates.md) | 5 个领域 SOP — Primitive 层（Shell 层见 skill.md Step 1） | stable |
 | [hitl-workflow.md](references/hitl-workflow.md) | 人机协作工作流（三种模式 + SOP 集成） | stable |
 | [checkpoint-guide.md](references/checkpoint-guide.md) | 检查点系统（Level 1 任务级 / Level 2 子步骤级 / Level 3 精确级） | stable (L1) / beta (L2) / planned (L3) |
 | [code-dev-dag.md](references/code-dev-dag.md) | 代码开发 DAG 模板 | stable |
