@@ -371,65 +371,17 @@ Coordinator:     大模型（opus） — 复杂推理和规划
 └── history.log                        ← 操作日志
 ```
 
-### 6.2 检查点文件结构（增强版）
+### 6.2 检查点文件结构
 
-```json
-{
-  "orchestrator_id": "orch-20260515-180000-12345",
-  "coordinator_pid": 12345,
-  "created_at": "2026-05-15T18:00:00Z",
-  "updated_at": "2026-05-15T18:15:00Z",
-  "status": "in_progress | completed | failed",
-  "scenario": "code_dev | deep_research | general",
-  "goal": "用户原始输入",
-  "checkpoint_version": 2,
-  "checkpoint_mode": "full | incremental | compact",
-  "checkpoint_sequence": 4,
-  "dag": {
-    "tasks": [
-      {
-        "task_id": "1",
-        "subject": "...",
-        "description": "...",
-        "status": "completed",
-        "blockedBy": [],
-        "agent_output": "...",
-        "agent_session_id": "d800ec28-...",
-        "sub_steps": [
-          {
-            "step_id": "1.1",
-            "description": "分析需求",
-            "status": "completed",
-            "output_summary": "...",
-            "started_at": "2026-05-15T18:01:00Z",
-            "completed_at": "2026-05-15T18:03:00Z"
-          },
-          {
-            "step_id": "1.2",
-            "description": "编写核心逻辑",
-            "status": "completed",
-            "output_summary": "...",
-            "started_at": "2026-05-15T18:03:00Z",
-            "completed_at": "2026-05-15T18:08:00Z"
-          }
-        ],
-        "retry_count": 0,
-        "last_error": null
-      }
-    ]
-  },
-  "hitl_gates": [
-    {
-      "gate_id": "approval-1",
-      "after_task": "3",
-      "question": "模块A和B的设计方案已生成，请审阅后确认继续",
-      "status": "pending | approved | rejected",
-      "user_response": null
-    }
-  ],
-  "summary": null
-}
-```
+检查点格式详见 **SKILL.md §4 检查点保存**，该章节为检查点结构的权威定义。此处仅保留设计层面的决策说明。
+
+**设计决策：**
+- 采用读-改-写模式，每次状态变更立即写回，最小化崩溃丢失窗口
+- STATIC 字段 write-once（创建时写入，后续只读），CORE 字段 frequently updated（每次状态变更时写回）
+- `task_map` 提供 subject_id 到 claude_task_id 的反向索引，支持统一 ID 模式的依赖解析
+- 大文本 Agent 输出写入 `results/` 子目录，检查点仅存 `agent_output_ref` 路径引用
+- `dag_snapshots` 采用 append-only 模式记录 DAG 变更历史（每次 Replan 追加一条）
+- `checkpoint_mode` 支持 `full` / `incremental` / `compact` 三种模式
 
 ### 6.3 增量检查点与断点续传
 
@@ -586,16 +538,18 @@ Orchestrator Skill 定位为高层调度中枢，与以下主流多 Agent 框架
 |---|---|---|---|---|---|---|
 | **抽象层级** | 高层应用 | 底层运行时 | 中层框架 | 中层框架 | 中层框架 | 中层框架 |
 | **调度模型** | Coordinator 中心化 | StateGraph DAG | 顺序/层级 Process | 固定角色链 SOP | Role-Playing 对话 | Agent Network |
-| **依赖声明** | blockedBy + DSL（计划中） | `add_edge`/`add_conditional_edge` | `@listen`/`@router` 装饰器 | 固定阶段顺序 | 隐式（对话驱动） | Agent Card 声明 |
+| **依赖声明** | blockedBy（已实现，详见 SKILL.md §3）+ DSL（planned） | `add_edge`/`add_conditional_edge` | `@listen`/`@router` 装饰器 | 固定阶段顺序 | 隐式（对话驱动） | Agent Card 声明 |
 | **持久化** | 文件级 JSON 检查点 | SQLite/PostgreSQL 自动 Checkpoint | 无内置（依赖 LangSmith） | 无内置 | 无内置 | 无内置 |
-| **检查点粒度** | 子步骤级（计划中） | 每步自动 Checkpoint | — | — | — | — |
+| **检查点粒度** | 子步骤级（beta，详见 SKILL.md §4） | 每步自动 Checkpoint | — | — | — | — |
 | **检查点模式** | 4 种：Full/Incremental/Compact（stable）；Delta（planned） | 3 种（Full/Incremental/Delta） | — | — | — | — |
-| **断点续传** | 任务级（当前）/ 子步骤级（计划中） | 原生支持（任意 SuperStep） | 无 | 无 | 无 | 无 |
+| **断点续传** | 任务级（stable）/ 子步骤级（beta，详见 SKILL.md §4） | 原生支持（任意 SuperStep） | 无 | 无 | 无 | 无 |
 | **加密持久化** | 无（本地文件） | AES 加密可选 | — | — | — | — |
-| **HITL 中断** | `hitl_gates`（计划中） | `interrupt()` 原生支持 | `human_input=True` 标记 | 无内置 | 无内置 | 无内置 |
-| **流式进度** | 检查点轮询（当前） | 7 种流模式（values/updates/messages/custom/checkpoints/tasks/debug） | 回调输出 | 日志输出 | 对话流 | Agent Event Stream |
-| **角色系统** | 角色模板库（计划中） | 无内置 | `role+goal+backstory` 三段式 | 固定角色链（PM/Architect/Engineer） | Role 定义 | Agent Card |
-| **领域 SOP** | SOP 模板库（计划中） | 无内置 | 无内置 | 固定 SOP（软件公司） | 无内置 | 无内置 |
+| **HITL 中断** | `hitl_gates`（已实现，详见 SKILL.md §5.2） | `interrupt()` 原生支持 | `human_input=True` 标记 | 无内置 | 无内置 | 无内置 |
+| **流式进度** | JSONL 事件流 + 检查点轮询（已实现，详见 SKILL.md §5.5） | 7 种流模式（values/updates/messages/custom/checkpoints/tasks/debug） | 回调输出 | 日志输出 | 对话流 | Agent Event Stream |
+| **角色系统** | 角色模板库（已实现，详见 references/role-templates.md） | 无内置 | `role+goal+backstory` 三段式 | 固定角色链（PM/Architect/Engineer） | Role 定义 | Agent Card |
+| **领域 SOP** | SOP 模板库（已实现，详见 references/sop-templates.md） | 无内置 | 无内置 | 固定 SOP（软件公司） | 无内置 | 无内置 |
+
+> **免责声明：** 本表最后更新于 2026-07-26，以 SKILL.md 为准。部分"planned"标记可能在 SKILL.md 中已有对应实现，请以 SKILL.md 各章节的实际内容为权威参考。
 | **协议互操作** | 仅 Claude Code Sub-Agent | LangGraph Platform API | 无（Python 库内调用） | 无 | 无 | A2A + MCP 双协议 |
 | **运行环境** | Claude Code Skill 沙盒 | Python/JS 独立进程 | Python 独立进程 | Python 独立进程 | Python 独立进程 | TypeScript 独立进程 |
 | **安装复杂度** | 零安装（Skill 文件） | `pip install langgraph` | `pip install crewai` | `pip install metagpt` | `pip install camel` | `npm install beeai` |

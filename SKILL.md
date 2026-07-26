@@ -31,6 +31,10 @@ triggers:
 - ❌ 自己去 WebSearch/WebFetch → 应派 Researcher Agent
 - ❌ 自己去读取 Agent 输出文件并分析内容 → 应派 Reader Agent，只读元数据（文件存在、大小）、Verifier 判决 JSON 的 pass/score 顶层字段和 Agent 完成通知中的结构化摘要除外
 
+> **例外 — Verifier 判决读取：** Coordinator 可读取 Verifier 写入的 `verdict-<task_id>.json` 文件，
+> 但仅用于: (a) 解析 `pass`/`score` 顶层字段做 unlock/退回决策，(b) 在 `pass=false` 时将 `issues` + `suggestion`
+> 注入上游 Agent 的修正 prompt。读取范围限定为 Verdict JSON 的顶层字段，不包含 Agent 原始输出内容。
+
 **正面示例 — Coordinator 应该做的事（非穷举清单）：**
 - 分析目标、识别场景类型、选择 SOP 模板
 - 生成方案文档（initial-plan.md），执行自审查后进入任务拆解
